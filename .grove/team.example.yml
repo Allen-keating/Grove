@@ -1,0 +1,16 @@
+version: 1
+
+team:
+  - github: your-github-username
+    lark_id: "ou_xxxxxxxx0"
+    name: Your Name
+    role: fullstack
+    skills: [python, react, devops]
+    authority: owner
+
+  - github: teammate1
+    lark_id: "ou_xxxxxxxx1"
+    name: Teammate 1
+    role: frontend
+    skills: [react, typescript, css]
+    authority: member

@@ -1,0 +1,42 @@
+version: 1
+
+project:
+  name: "My Project"
+  repo: "org/repo-name"
+  language: "zh-CN"
+
+lark:
+  app_id: "${LARK_APP_ID}"
+  app_secret: "${LARK_APP_SECRET}"
+  chat_id: "oc_xxxxxxxx"
+  space_id: "spc_xxxxxxxx"
+
+github:
+  app_id: "${GITHUB_APP_ID}"
+  private_key_path: "${GITHUB_PRIVATE_KEY_PATH}"
+  installation_id: "${GITHUB_INSTALLATION_ID}"
+  webhook_secret: "${GITHUB_WEBHOOK_SECRET}"
+
+llm:
+  api_key: "${ANTHROPIC_API_KEY}"
+  model: "claude-sonnet-4-6"
+
+persona:
+  name: "Grove"
+  tone: "专业但不刻板"
+  reminder_intensity: 3
+  proactive_messaging: true
+
+work_hours:
+  start: "09:00"
+  end: "18:00"
+  timezone: "Asia/Shanghai"
+  workdays: [1, 2, 3, 4, 5]
+
+schedules:
+  daily_report: "09:00"
+  doc_drift_check: "09:00"
+
+doc_sync:
+  auto_update_level: "moderate"
+  github_docs_path: "docs/prd/"

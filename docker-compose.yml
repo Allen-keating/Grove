@@ -1,0 +1,10 @@
+services:
+  grove:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.grove:/data/.grove
+    env_file:
+      - .env
+    restart: unless-stopped
