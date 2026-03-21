@@ -2190,7 +2190,6 @@ Per spec Section 6.6, `lark.doc_updated` events arrive via HTTP callback, not We
 # grove/ingress/lark_webhook.py
 """Lark HTTP webhook for receiving event callbacks (e.g., doc_updated)."""
 
-import json
 import logging
 from typing import Awaitable, Callable
 
@@ -2258,6 +2257,7 @@ This task creates the Lark WebSocket client wrapper. Full testing requires a run
 # grove/ingress/lark_websocket.py
 """Lark WebSocket long-connection client for receiving messages."""
 
+import asyncio
 import json
 import logging
 from typing import Awaitable, Callable
@@ -2513,6 +2513,7 @@ from grove.core.member_resolver import MemberResolver
 from grove.core.storage import Storage
 from grove.ingress.github_webhook import create_github_webhook_router
 from grove.ingress.health import HealthState, create_health_router
+from grove.ingress.lark_webhook import create_lark_webhook_router
 from grove.ingress.lark_websocket import create_lark_ws_client
 from grove.ingress.scheduler import create_scheduler
 from grove.integrations.github.client import GitHubClient
@@ -2602,12 +2603,15 @@ async def lifespan(app: FastAPI):
         model=config.llm.model,
     )
 
-    # Register GitHub webhook router (needs config for webhook_secret)
+    # Register webhook routers (need config, so must be inside lifespan)
     app.include_router(
         create_github_webhook_router(
             webhook_secret=config.github.webhook_secret,
             on_event=handle_event,
         )
+    )
+    app.include_router(
+        create_lark_webhook_router(on_event=handle_event)
     )
 
     # Scheduler
@@ -2632,11 +2636,13 @@ async def lifespan(app: FastAPI):
 
     async def start_lark_ws():
         try:
-            await asyncio.to_thread(lark_ws.start)
+            # Mark connected optimistically; lark_ws.start() blocks forever on success
             health_state.lark_ws_connected = True
-            logger.info("Lark WebSocket connected")
+            logger.info("Lark WebSocket starting")
+            await asyncio.to_thread(lark_ws.start)
         except Exception:
-            logger.exception("Failed to start Lark WebSocket")
+            health_state.lark_ws_connected = False
+            logger.exception("Lark WebSocket disconnected or failed to start")
 
     lark_task = asyncio.create_task(start_lark_ws())
 
