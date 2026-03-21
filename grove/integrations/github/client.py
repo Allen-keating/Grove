@@ -82,3 +82,24 @@ class GitHubClient:
                       assignees=[a.login for a in i.assignees])
             for i in issues
         ]
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def write_file(self, repo: str, path: str, content: str, message: str) -> None:
+        """Create or update a file in the repo."""
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        try:
+            existing = r.get_contents(path)
+            r.update_file(path, message, content, existing.sha)
+            logger.info("Updated file %s in %s", path, repo)
+        except Exception:
+            r.create_file(path, message, content)
+            logger.info("Created file %s in %s", path, repo)
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def read_file(self, repo: str, path: str) -> str:
+        """Read a file from the repo."""
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        content = r.get_contents(path)
+        return content.decoded_content.decode("utf-8")
