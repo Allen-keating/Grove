@@ -72,6 +72,22 @@ def build_daily_report_card(
     }
 
 
+def build_doc_change_card(pr_number, change_description, suggested_update, doc_id):
+    return {
+        "header": {"title": {"tag": "plain_text", "content": "🌳 Grove — 文档更新确认"}, "template": "orange"},
+        "elements": [
+            {"tag": "div", "text": {"tag": "lark_md", "content":
+                f"**来源：** PR #{pr_number}\n**变更：** {change_description}\n\n**建议更新：**\n{suggested_update}"}},
+            {"tag": "action", "actions": [
+                {"tag": "button", "text": {"tag": "plain_text", "content": "✅ 确认更新"},
+                 "type": "primary", "value": {"action": "approve_doc_update", "doc_id": doc_id, "pr_number": pr_number}},
+                {"tag": "button", "text": {"tag": "plain_text", "content": "❌ 拒绝"},
+                 "type": "danger", "value": {"action": "reject_doc_update", "doc_id": doc_id, "pr_number": pr_number}},
+            ]},
+        ],
+    }
+
+
 def build_notification_card(title, content, color="blue"):
     return {
         "header": {
