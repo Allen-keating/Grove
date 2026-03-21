@@ -64,9 +64,33 @@ def create_lark_ws_client(
         )
         asyncio.run_coroutine_threadsafe(on_event(event), _loop)
 
-    event_handler = lark.EventDispatcherHandler.builder("", "") \
-        .register_p2_im_message_receive_v1(handle_message) \
-        .build()
+    def handle_card_action(data):
+        """Handle Lark interactive card button clicks."""
+        try:
+            action = data.event.action
+            operator = data.event.operator
+            event = Event(
+                type=EventType.LARK_CARD_ACTION,
+                source="lark",
+                payload={
+                    "action": {"value": action.value if hasattr(action, "value") else {}},
+                    "operator_id": operator.open_id if hasattr(operator, "open_id") else "",
+                },
+            )
+            asyncio.run_coroutine_threadsafe(on_event(event), _loop)
+        except Exception:
+            logger.exception("Failed to parse card action")
+
+    # NOTE: register_p2_card_action_trigger requires lark-oapi >= 1.4.0.
+    # If the SDK version does not support it, card actions are received via the
+    # HTTP webhook fallback already implemented in lark_webhook.py.
+    event_handler_builder = lark.EventDispatcherHandler.builder("", "") \
+        .register_p2_im_message_receive_v1(handle_message)
+    if hasattr(event_handler_builder, "register_p2_card_action_trigger"):
+        event_handler_builder = event_handler_builder.register_p2_card_action_trigger(
+            handle_card_action
+        )
+    event_handler = event_handler_builder.build()
 
     ws_client = lark.ws.Client(
         app_id=app_id,
