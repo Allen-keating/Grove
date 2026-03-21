@@ -41,6 +41,37 @@ def build_task_assignment_card(
     }
 
 
+def build_daily_report_card(
+    date: str, milestone_summary: list[dict], member_activity: dict[str, int],
+    risks: list[dict], suggestions: str,
+) -> dict:
+    ms_lines = [f"**{ms['title']}** 进度：{ms['progress_pct']}%（{ms['closed']}/{ms['closed'] + ms['open']}）"
+                for ms in milestone_summary]
+    ms_text = "\n".join(ms_lines) if ms_lines else "暂无里程碑"
+
+    activity_lines = ["| 成员 | 昨日 Commits | 状态 |", "|------|-------------|------|"]
+    for member, count in member_activity.items():
+        status = "🟢 正常" if count > 0 else "🔴 无活动"
+        activity_lines.append(f"| @{member} | {count} | {status} |")
+    activity_text = "\n".join(activity_lines)
+
+    risk_lines = [f"{'🔴' if r.get('severity') == 'high' else '🟡'} {r['description']}" for r in risks]
+    risk_text = "\n".join(risk_lines) if risk_lines else "✅ 无风险项"
+
+    return {
+        "header": {"title": {"tag": "plain_text", "content": f"📋 每日站会报告 — {date}"}, "template": "blue"},
+        "elements": [
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"**整体进度**\n{ms_text}"}},
+            {"tag": "hr"},
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"**成员动态**\n{activity_text}"}},
+            {"tag": "hr"},
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"**风险项**\n{risk_text}"}},
+            {"tag": "hr"},
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"**建议**\n{suggestions}"}},
+        ],
+    }
+
+
 def build_notification_card(title, content, color="blue"):
     return {
         "header": {
