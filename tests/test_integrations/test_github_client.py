@@ -1,5 +1,4 @@
 # tests/test_integrations/test_github_client.py
-import pytest
 from grove.integrations.github.client import GitHubClient
 from grove.integrations.github.models import IssueData
 

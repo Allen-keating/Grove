@@ -1,7 +1,7 @@
 # tests/test_core/test_config.py
 from pathlib import Path
 import pytest
-from grove.config import GroveConfig, load_config
+from grove.config import load_config
 
 
 class TestConfig:

@@ -1,5 +1,4 @@
 # tests/test_core/test_event_bus.py
-import asyncio
 import logging
 
 import pytest

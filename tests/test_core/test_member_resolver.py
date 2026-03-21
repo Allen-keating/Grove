@@ -1,6 +1,5 @@
 # tests/test_core/test_member_resolver.py
 from pathlib import Path
-import pytest
 from grove.core.member_resolver import MemberResolver
 from grove.core.storage import Storage
 

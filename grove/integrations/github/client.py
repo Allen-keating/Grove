@@ -4,7 +4,7 @@ import logging
 import httpx
 from github import Github, GithubIntegration
 from tenacity import retry, stop_after_attempt, wait_exponential
-from grove.integrations.github.models import IssueData, PRData
+from grove.integrations.github.models import IssueData
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class GitHubClient:
         logger.info("Created issue #%d in %s", issue.number, repo)
         return IssueData(
             number=issue.number, title=issue.title, body=issue.body or "",
-            state=issue.state, labels=[l.name for l in issue.labels],
+            state=issue.state, labels=[label.name for label in issue.labels],
             assignees=[a.login for a in issue.assignees],
         )
 
@@ -78,7 +78,7 @@ class GitHubClient:
         issues = r.get_issues(state=state, labels=label_objects or [])
         return [
             IssueData(number=i.number, title=i.title, body=i.body or "",
-                      state=i.state, labels=[l.name for l in i.labels],
+                      state=i.state, labels=[label.name for label in i.labels],
                       assignees=[a.login for a in i.assignees])
             for i in issues
         ]

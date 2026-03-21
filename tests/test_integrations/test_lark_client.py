@@ -1,5 +1,4 @@
 # tests/test_integrations/test_lark_client.py
-import pytest
 from grove.integrations.lark.client import LarkClient
 from grove.integrations.lark.models import LarkMessage
 

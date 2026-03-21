@@ -1,8 +1,6 @@
 from unittest.mock import AsyncMock
 
-import pytest
 
-from grove.core.events import EventType
 from grove.ingress.scheduler import create_scheduler
 
 
