@@ -25,6 +25,7 @@ from grove.modules.member.handler import MemberModule
 from grove.modules.prd_generator.handler import PRDGeneratorModule
 from grove.modules.prd_generator.conversation import ConversationManager
 from grove.modules.task_breakdown.handler import TaskBreakdownModule
+from grove.modules.daily_report.handler import DailyReportModule
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -120,6 +121,14 @@ async def lifespan(app: FastAPI):
     )
     event_bus.register(task_breakdown)
     logger.info("Registered TaskBreakdownModule")
+
+    daily_report = DailyReportModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config,
+        resolver=resolver, storage=storage,
+    )
+    event_bus.register(daily_report)
+    logger.info("Registered DailyReportModule")
 
     # Register webhook routers (need config)
     app.include_router(create_github_webhook_router(

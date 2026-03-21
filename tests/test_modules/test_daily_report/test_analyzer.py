@@ -1,6 +1,6 @@
 # tests/test_modules/test_daily_report/test_analyzer.py
 import pytest
-from grove.modules.daily_report.analyzer import ReportAnalyzer, RiskItem
+from grove.modules.daily_report.analyzer import ReportAnalyzer
 
 class TestReportAnalyzer:
     @pytest.fixture

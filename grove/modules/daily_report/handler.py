@@ -1,7 +1,6 @@
 # grove/modules/daily_report/handler.py
 """Daily report module — collect, analyze, report, archive."""
 import logging
-from datetime import datetime, timezone
 from grove.config import GroveConfig
 from grove.core.event_bus import EventBus, subscribe
 from grove.core.events import Event, EventType

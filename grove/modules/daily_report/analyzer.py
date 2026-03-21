@@ -49,7 +49,8 @@ class ReportAnalyzer:
         now = datetime.now(timezone.utc)
         risks = []
         for ms in data.get("milestones", []):
-            if not ms.get("due_on"): continue
+            if not ms.get("due_on"):
+                continue
             due = datetime.fromisoformat(ms["due_on"]).replace(tzinfo=timezone.utc)
             days_left = (due - now).days
             if days_left <= 3 and ms["open_issues"] > 0:
