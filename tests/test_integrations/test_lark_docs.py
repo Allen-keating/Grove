@@ -1,6 +1,4 @@
 # tests/test_integrations/test_lark_docs.py
-from unittest.mock import MagicMock, patch
-import pytest
 from grove.integrations.lark.client import LarkClient
 
 
