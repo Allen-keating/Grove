@@ -103,3 +103,25 @@ class GitHubClient:
         r = gh.get_repo(repo)
         content = r.get_contents(path)
         return content.decoded_content.decode("utf-8")
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def update_issue(self, repo: str, issue_number: int, **kwargs) -> None:
+        """Update an issue. Accepts: title, body, state, labels, assignee, milestone."""
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        issue = r.get_issue(issue_number)
+        issue.edit(**kwargs)
+        logger.info("Updated issue #%d in %s", issue_number, repo)
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def create_milestone(self, repo: str, title: str, due_on: str | None = None):
+        """Create a milestone. Returns the milestone number."""
+        from datetime import datetime
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        kwargs = {"title": title}
+        if due_on:
+            kwargs["due_on"] = datetime.fromisoformat(due_on)
+        milestone = r.create_milestone(**kwargs)
+        logger.info("Created milestone '%s' (#%d) in %s", title, milestone.number, repo)
+        return milestone.number
