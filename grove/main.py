@@ -20,6 +20,9 @@ from grove.ingress.scheduler import create_scheduler
 from grove.integrations.github.client import GitHubClient
 from grove.integrations.lark.client import LarkClient
 from grove.integrations.llm.client import LLMClient
+from grove.modules.communication.handler import CommunicationModule
+from grove.modules.prd_generator.handler import PRDGeneratorModule
+from grove.modules.prd_generator.conversation import ConversationManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -83,6 +86,24 @@ async def lifespan(app: FastAPI):
     app.state.llm_client = LLMClient(
         api_key=config.llm.api_key, model=config.llm.model,
     )
+
+    # Conversation manager
+    conv_manager = ConversationManager(storage)
+
+    # Register modules
+    communication = CommunicationModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config,
+    )
+    event_bus.register(communication)
+    logger.info("Registered CommunicationModule")
+
+    prd_generator = PRDGeneratorModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config, conv_manager=conv_manager,
+    )
+    event_bus.register(prd_generator)
+    logger.info("Registered PRDGeneratorModule")
 
     # Register webhook routers (need config)
     app.include_router(create_github_webhook_router(
