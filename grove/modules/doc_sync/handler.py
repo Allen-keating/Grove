@@ -1,13 +1,8 @@
 # grove/modules/doc_sync/handler.py
 """Document sync module — keep PRD in sync with code changes."""
 import logging
-from grove.config import GroveConfig
-from grove.core.event_bus import EventBus, subscribe
+from grove.core.event_bus import subscribe
 from grove.core.events import Event, EventType
-from grove.core.storage import Storage
-from grove.integrations.github.client import GitHubClient
-from grove.integrations.lark.client import LarkClient
-from grove.integrations.llm.client import LLMClient
 from grove.modules.doc_sync.diff_classifier import DiffClassifier
 from grove.modules.doc_sync.doc_updater import DocUpdater
 
