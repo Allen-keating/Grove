@@ -125,3 +125,43 @@ class GitHubClient:
         milestone = r.create_milestone(**kwargs)
         logger.info("Created milestone '%s' (#%d) in %s", title, milestone.number, repo)
         return milestone.number
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def list_recent_commits(self, repo: str, since: str, author: str | None = None) -> list:
+        """List commits since a datetime string. Returns list of dicts."""
+        from datetime import datetime
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        kwargs = {"since": datetime.fromisoformat(since)}
+        if author:
+            kwargs["author"] = author
+        commits = r.get_commits(**kwargs)
+        return [
+            {"sha": c.sha[:7], "message": c.commit.message.split("\n")[0],
+             "author": c.commit.author.name, "date": c.commit.author.date.isoformat()}
+            for c in commits[:50]
+        ]
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def list_open_prs(self, repo: str) -> list:
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        prs = r.get_pulls(state="open")
+        return [
+            {"number": pr.number, "title": pr.title, "author": pr.user.login,
+             "created_at": pr.created_at.isoformat(), "updated_at": pr.updated_at.isoformat(),
+             "review_requested": bool(list(pr.get_review_requests()[0]))}
+            for pr in prs[:20]
+        ]
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def list_milestones(self, repo: str) -> list:
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        milestones = r.get_milestones(state="open")
+        return [
+            {"number": m.number, "title": m.title,
+             "due_on": m.due_on.isoformat() if m.due_on else None,
+             "open_issues": m.open_issues, "closed_issues": m.closed_issues}
+            for m in milestones
+        ]
