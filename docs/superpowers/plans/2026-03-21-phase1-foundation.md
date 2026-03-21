@@ -6,7 +6,7 @@
 
 **Architecture:** Single FastAPI process with event bus. GitHub Webhooks and Lark WebSocket feed standardized events into a bus. Modules subscribe via decorators. Three integration clients (GitHub, Lark, LLM) are injected into modules.
 
-**Tech Stack:** Python 3.12+, FastAPI, Uvicorn, APScheduler, PyGithub, httpx, lark-oapi, anthropic, Docker
+**Tech Stack:** Python 3.12+, FastAPI, Uvicorn, APScheduler, PyGithub, httpx, lark-oapi, anthropic, tenacity, Docker
 
 **Spec:** `docs/superpowers/specs/2026-03-21-grove-architecture-design.md`
 
@@ -34,6 +34,7 @@ grove/
 ├── ingress/
 │   ├── __init__.py
 │   ├── github_webhook.py          # POST /webhook/github + signature verification
+│   ├── lark_webhook.py            # POST /webhook/lark (doc_updated events)
 │   ├── lark_websocket.py          # Lark WS long-connection client
 │   ├── health.py                  # GET /health
 │   └── scheduler.py               # APScheduler cron registration
@@ -68,6 +69,7 @@ grove/
     ├── conftest.py                # Shared fixtures
     ├── test_core/
     │   ├── __init__.py
+    │   ├── test_config.py
     │   ├── test_events.py
     │   ├── test_event_bus.py
     │   ├── test_member_resolver.py
@@ -115,6 +117,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pydantic>=2.9.0",
     "pydantic-settings>=2.5.0",
+    "tenacity>=9.0.0",
 ]
 
 [project.optional-dependencies]
@@ -947,8 +950,11 @@ Expected: FAIL
 # grove/core/event_bus.py
 """Event bus with declarative @subscribe decorator and async dispatch."""
 
+import json
 import logging
 from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from grove.core.events import Event
@@ -980,9 +986,10 @@ def subscribe(event_type: str) -> Callable:
 class EventBus:
     """Central event dispatcher. Modules register themselves; the bus routes events."""
 
-    def __init__(self):
+    def __init__(self, failed_events_path: Path | None = None):
         # event_type -> list of bound async handler methods
         self._handlers: dict[str, list[Callable]] = defaultdict(list)
+        self._failed_events_path = failed_events_path
 
     def register(self, module: Any) -> None:
         """Scan a module instance for @subscribe-decorated methods and register them."""
@@ -1001,19 +1008,38 @@ class EventBus:
                         event_type,
                     )
 
+    def _log_failed_event(self, event: Event, handler_name: str, error: str) -> None:
+        """Append failed event to .grove/logs/failed-events.jsonl."""
+        if self._failed_events_path is None:
+            return
+        try:
+            self._failed_events_path.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "event_id": event.id,
+                "event_type": event.type,
+                "handler": handler_name,
+                "error": error,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            with open(self._failed_events_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception:
+            logger.exception("Failed to write failed-event log")
+
     async def dispatch(self, event: Event) -> None:
         """Dispatch an event to all registered handlers. Errors are logged, not raised."""
         handlers = self._handlers.get(event.type, [])
         for handler in handlers:
             try:
                 await handler(event)
-            except Exception:
-                logger.exception(
-                    "Handler %s.%s failed for event %s",
-                    type(handler.__self__).__name__ if hasattr(handler, "__self__") else "?",
-                    handler.__name__,
-                    event.id,
+            except Exception as exc:
+                handler_name = (
+                    f"{type(handler.__self__).__name__}.{handler.__name__}"
+                    if hasattr(handler, "__self__")
+                    else handler.__name__
                 )
+                logger.exception("Handler %s failed for event %s", handler_name, event.id)
+                self._log_failed_event(event, handler_name, str(exc))
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1331,7 +1357,9 @@ class CommitData:
 
 import logging
 
+import httpx
 from github import Github, GithubIntegration
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from grove.integrations.github.models import IssueData, PRData
 
@@ -1346,6 +1374,7 @@ class GitHubClient:
         self.private_key_path = private_key_path
         self.installation_id = installation_id
         self._github: Github | None = None
+        self._token: str | None = None
 
     def _get_github(self) -> Github:
         """Lazy-init authenticated Github instance."""
@@ -1356,10 +1385,12 @@ class GitHubClient:
                 integration_id=int(self.app_id),
                 private_key=private_key,
             )
-            installation = integration.get_access_token(int(self.installation_id))
-            self._github = Github(installation.token)
+            access = integration.get_access_token(int(self.installation_id))
+            self._token = access.token
+            self._github = Github(self._token)
         return self._github
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
     def create_issue(
         self, repo: str, title: str, body: str = "",
         labels: list[str] | None = None, assignee: str | None = None,
@@ -1381,6 +1412,7 @@ class GitHubClient:
             assignees=[a.login for a in issue.assignees],
         )
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
     def add_comment(self, repo: str, issue_number: int, body: str) -> None:
         gh = self._get_github()
         r = gh.get_repo(repo)
@@ -1388,28 +1420,38 @@ class GitHubClient:
         issue.create_comment(body)
         logger.info("Added comment to #%d in %s", issue_number, repo)
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
     def get_pr_diff(self, repo: str, pr_number: int) -> str:
-        """Get the diff text for a PR."""
-        import httpx
-
+        """Get the diff text for a PR via httpx."""
         gh = self._get_github()
         r = gh.get_repo(repo)
         pr = r.get_pull(pr_number)
-        # Use httpx to get diff with Accept header
         resp = httpx.get(
             pr.url,
             headers={
-                "Authorization": f"token {gh._Github__requester.auth.token}",
+                "Authorization": f"token {self._token}",
                 "Accept": "application/vnd.github.v3.diff",
             },
         )
         resp.raise_for_status()
         return resp.text
 
-    def list_issues(self, repo: str, state: str = "open", labels: list[str] | None = None) -> list[IssueData]:
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def list_issues(
+        self, repo: str, state: str = "open", labels: list[str] | None = None,
+    ) -> list[IssueData]:
         gh = self._get_github()
         r = gh.get_repo(repo)
-        issues = r.get_issues(state=state, labels=labels or [])
+        # PyGithub get_issues expects Label objects for filtering.
+        # Resolve label strings to Label objects first.
+        label_objects = []
+        if labels:
+            for name in labels:
+                try:
+                    label_objects.append(r.get_label(name))
+                except Exception:
+                    logger.warning("Label '%s' not found in %s, skipping", name, repo)
+        issues = r.get_issues(state=state, labels=label_objects or [])
         return [
             IssueData(
                 number=i.number, title=i.title, body=i.body or "",
@@ -1506,10 +1548,13 @@ class LarkDocInfo:
 # grove/integrations/lark/client.py
 """Lark/Feishu API client using lark-oapi SDK."""
 
+import asyncio
+import json
 import logging
 
 import lark_oapi as lark
 from lark_oapi.api.im.v1 import CreateMessageRequest, CreateMessageRequestBody
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -1530,61 +1575,49 @@ class LarkClient:
                 .build()
         return self._client
 
-    async def send_text(self, chat_id: str, text: str) -> None:
-        """Send a text message to a chat."""
-        import json
+    def _send_message_sync(self, receive_id_type: str, receive_id: str,
+                           msg_type: str, content: str) -> None:
+        """Synchronous message send — called via asyncio.to_thread."""
         client = self._get_client()
         request = CreateMessageRequest.builder() \
-            .receive_id_type("chat_id") \
+            .receive_id_type(receive_id_type) \
             .request_body(
                 CreateMessageRequestBody.builder()
-                .receive_id(chat_id)
-                .msg_type("text")
-                .content(json.dumps({"text": text}))
+                .receive_id(receive_id)
+                .msg_type(msg_type)
+                .content(content)
                 .build()
             ).build()
         response = client.im.v1.message.create(request)
         if not response.success():
-            logger.error("Failed to send message: %s", response.msg)
             raise RuntimeError(f"Lark API error: {response.code} {response.msg}")
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    async def send_text(self, chat_id: str, text: str) -> None:
+        """Send a text message to a chat (non-blocking)."""
+        await asyncio.to_thread(
+            self._send_message_sync, "chat_id", chat_id, "text",
+            json.dumps({"text": text}),
+        )
         logger.info("Sent text to chat %s", chat_id)
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
     async def send_card(self, chat_id: str, card_content: dict) -> None:
-        """Send an interactive card message."""
-        import json
-        client = self._get_client()
-        request = CreateMessageRequest.builder() \
-            .receive_id_type("chat_id") \
-            .request_body(
-                CreateMessageRequestBody.builder()
-                .receive_id(chat_id)
-                .msg_type("interactive")
-                .content(json.dumps(card_content))
-                .build()
-            ).build()
-        response = client.im.v1.message.create(request)
-        if not response.success():
-            logger.error("Failed to send card: %s", response.msg)
-            raise RuntimeError(f"Lark API error: {response.code} {response.msg}")
+        """Send an interactive card message (non-blocking)."""
+        await asyncio.to_thread(
+            self._send_message_sync, "chat_id", chat_id, "interactive",
+            json.dumps(card_content),
+        )
         logger.info("Sent card to chat %s", chat_id)
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
     async def send_private(self, user_id: str, text: str) -> None:
-        """Send a private message to a user by Open ID."""
-        import json
-        client = self._get_client()
-        request = CreateMessageRequest.builder() \
-            .receive_id_type("open_id") \
-            .request_body(
-                CreateMessageRequestBody.builder()
-                .receive_id(user_id)
-                .msg_type("text")
-                .content(json.dumps({"text": text}))
-                .build()
-            ).build()
-        response = client.im.v1.message.create(request)
-        if not response.success():
-            logger.error("Failed to send private msg: %s", response.msg)
-            raise RuntimeError(f"Lark API error: {response.code} {response.msg}")
+        """Send a private message to a user by Open ID (non-blocking)."""
+        await asyncio.to_thread(
+            self._send_message_sync, "open_id", user_id, "text",
+            json.dumps({"text": text}),
+        )
+        logger.info("Sent private msg to %s", user_id)
 ```
 
 - [ ] **Step 5: Implement cards.py (basic skeleton)**
@@ -1645,30 +1678,46 @@ from grove.integrations.llm.client import LLMClient
 
 class TestLLMClient:
     def test_client_init(self):
-        client = LLMClient(api_key="test_key", model="claude-sonnet-4-6")
-        assert client.model == "claude-sonnet-4-6"
-        assert client._semaphore._value == 3  # default concurrency
+        with patch("grove.integrations.llm.client.anthropic.AsyncAnthropic"):
+            client = LLMClient(api_key="test_key", model="claude-sonnet-4-6")
+            assert client.model == "claude-sonnet-4-6"
+            assert client._semaphore._value == 3  # default concurrency
 
     def test_client_custom_concurrency(self):
-        client = LLMClient(api_key="test_key", model="claude-sonnet-4-6", max_concurrency=5)
-        assert client._semaphore._value == 5
+        with patch("grove.integrations.llm.client.anthropic.AsyncAnthropic"):
+            client = LLMClient(api_key="test_key", model="claude-sonnet-4-6", max_concurrency=5)
+            assert client._semaphore._value == 5
 
     async def test_chat_calls_anthropic(self):
-        client = LLMClient(api_key="test_key", model="claude-sonnet-4-6")
-
+        mock_anthropic = MagicMock()
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="Hello from Claude")]
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
+        mock_anthropic.messages.create = AsyncMock(return_value=mock_response)
 
-        with patch.object(
-            client._anthropic.messages, "create",
-            new_callable=AsyncMock, return_value=mock_response
-        ):
+        with patch("grove.integrations.llm.client.anthropic.AsyncAnthropic",
+                    return_value=mock_anthropic):
+            client = LLMClient(api_key="test_key", model="claude-sonnet-4-6")
             result = await client.chat(
                 system_prompt="You are an AI PM.",
                 messages=[{"role": "user", "content": "Hello"}],
             )
             assert result == "Hello from Claude"
+
+    async def test_chat_timeout(self):
+        """Verify that the client passes a 60s timeout."""
+        mock_anthropic = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="ok")]
+        mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
+        mock_anthropic.messages.create = AsyncMock(return_value=mock_response)
+
+        with patch("grove.integrations.llm.client.anthropic.AsyncAnthropic",
+                    return_value=mock_anthropic):
+            client = LLMClient(api_key="test_key")
+            await client.chat(system_prompt="test", messages=[{"role": "user", "content": "hi"}])
+            call_kwargs = mock_anthropic.messages.create.call_args
+            assert call_kwargs.kwargs.get("timeout") == 60.0
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1680,13 +1729,14 @@ Expected: FAIL
 
 ```python
 # grove/integrations/llm/client.py
-"""Claude API client with concurrency control and cost logging."""
+"""Claude API client with concurrency control, retry, and cost logging."""
 
 import asyncio
 import logging
 import time
 
 import anthropic
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -1701,13 +1751,14 @@ class LLMClient:
         self._total_input_tokens = 0
         self._total_output_tokens = 0
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
     async def chat(
         self,
         system_prompt: str,
         messages: list[dict],
         max_tokens: int = 4096,
     ) -> str:
-        """Send a chat request to Claude with concurrency control."""
+        """Send a chat request to Claude with concurrency control and 60s timeout."""
         async with self._semaphore:
             start = time.monotonic()
             response = await self._anthropic.messages.create(
@@ -1715,6 +1766,7 @@ class LLMClient:
                 max_tokens=max_tokens,
                 system=system_prompt,
                 messages=messages,
+                timeout=60.0,
             )
             elapsed = time.monotonic() - start
 
@@ -2125,7 +2177,75 @@ git commit -m "feat: GitHub webhook ingress with HMAC signature verification"
 
 ---
 
-### Task 12: Lark WebSocket Ingress
+### Task 12: Lark HTTP Webhook (doc_updated events)
+
+**Files:**
+- Create: `grove/ingress/lark_webhook.py`
+
+Per spec Section 6.6, `lark.doc_updated` events arrive via HTTP callback, not WebSocket. This task creates a stub endpoint that will be fully implemented in Phase 5.
+
+- [ ] **Step 1: Implement lark_webhook.py**
+
+```python
+# grove/ingress/lark_webhook.py
+"""Lark HTTP webhook for receiving event callbacks (e.g., doc_updated)."""
+
+import json
+import logging
+from typing import Awaitable, Callable
+
+from fastapi import APIRouter, Request
+
+from grove.core.events import Event, EventType
+
+logger = logging.getLogger(__name__)
+
+
+def create_lark_webhook_router(
+    on_event: Callable[[Event], Awaitable[None]],
+) -> APIRouter:
+    """Create a router for Lark HTTP event callbacks.
+
+    Lark doc_updated events arrive here, not via WebSocket.
+    Full implementation in Phase 5 (doc sync module).
+    """
+    router = APIRouter()
+
+    @router.post("/webhook/lark")
+    async def handle_lark_callback(request: Request):
+        data = await request.json()
+
+        # Lark URL verification challenge
+        if "challenge" in data:
+            return {"challenge": data["challenge"]}
+
+        # TODO (Phase 5): Parse doc_updated events and dispatch
+        event_type = data.get("header", {}).get("event_type", "")
+        if event_type == "drive.file.edit_v1":
+            event = Event(
+                type=EventType.LARK_DOC_UPDATED,
+                source="lark",
+                payload=data,
+            )
+            await on_event(event)
+            return {"status": "ok"}
+
+        logger.debug("Ignoring Lark callback event: %s", event_type)
+        return {"status": "ignored"}
+
+    return router
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add grove/ingress/lark_webhook.py
+git commit -m "feat: Lark HTTP webhook stub for doc_updated events"
+```
+
+---
+
+### Task 13: Lark WebSocket Ingress
 
 **Files:**
 - Create: `grove/ingress/lark_websocket.py`
@@ -2180,12 +2300,19 @@ def create_lark_ws_client(
     app_id: str,
     app_secret: str,
     on_event: Callable[[Event], Awaitable[None]],
+    loop: asyncio.AbstractEventLoop | None = None,
 ) -> lark.ws.Client:
-    """Create and return a Lark WebSocket client (not started)."""
+    """Create and return a Lark WebSocket client (not started).
+
+    Args:
+        loop: The main asyncio event loop. Lark SDK callbacks run in a separate
+              thread, so we use asyncio.run_coroutine_threadsafe to dispatch
+              events back to the main loop.
+    """
+    # Capture the event loop at creation time for thread-safe dispatch
+    _loop = loop or asyncio.get_running_loop()
 
     def handle_message(data: P2ImMessageReceiveV1):
-        import asyncio
-
         msg = _parse_lark_message(data)
         if msg is None:
             return
@@ -2206,11 +2333,8 @@ def create_lark_ws_client(
             },
         )
 
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(on_event(event))
-        else:
-            asyncio.run(on_event(event))
+        # Thread-safe dispatch to the main event loop
+        asyncio.run_coroutine_threadsafe(on_event(event), _loop)
 
     event_handler = lark.EventDispatcherHandler.builder("", "") \
         .register_p2_im_message_receive_v1(handle_message) \
@@ -2235,7 +2359,7 @@ git commit -m "feat: Lark WebSocket ingress client for receiving messages"
 
 ---
 
-### Task 13: APScheduler Setup
+### Task 14: APScheduler Setup
 
 **Files:**
 - Create: `grove/ingress/scheduler.py`
@@ -2361,7 +2485,7 @@ git commit -m "feat: APScheduler cron setup for daily report and doc drift check
 
 ---
 
-### Task 14: Application Entry Point (main.py)
+### Task 15: Application Entry Point (main.py)
 
 **Files:**
 - Create: `grove/main.py`
@@ -2407,17 +2531,21 @@ def _get_grove_dir() -> Path:
     return Path(os.environ.get("GROVE_DIR", ".grove"))
 
 
-# Global state
+# Global state — initialized at module level, configured during lifespan
 health_state = HealthState()
-event_bus = EventBus()
+_grove_dir = _get_grove_dir()
+event_bus = EventBus(
+    failed_events_path=_grove_dir / "logs" / "failed-events.jsonl",
+)
+_member_resolver: MemberResolver | None = None
 
 
 async def handle_event(event: Event) -> None:
     """Central event handler — resolves member, dispatches to bus."""
     health_state.last_event_processed = event.timestamp
+
     # Member resolution: fill event.member from payload
-    if hasattr(app.state, "member_resolver"):
-        resolver: MemberResolver = app.state.member_resolver
+    if _member_resolver is not None:
         github_user = None
         lark_user = None
         if event.source == "github":
@@ -2430,9 +2558,9 @@ async def handle_event(event: Event) -> None:
             lark_user = event.payload.get("sender_id")
 
         if github_user:
-            event.member = resolver.by_github(github_user)
+            event.member = _member_resolver.by_github(github_user)
         elif lark_user:
-            event.member = resolver.by_lark_id(lark_user)
+            event.member = _member_resolver.by_lark_id(lark_user)
 
     await event_bus.dispatch(event)
 
@@ -2440,6 +2568,8 @@ async def handle_event(event: Event) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
+    global _member_resolver
+
     grove_dir = _get_grove_dir()
     logger.info("Starting Grove with .grove/ at %s", grove_dir)
 
@@ -2453,6 +2583,7 @@ async def lifespan(app: FastAPI):
 
     # Member resolver
     resolver = MemberResolver(storage)
+    _member_resolver = resolver
     app.state.member_resolver = resolver
     logger.info("Loaded %d team members", len(resolver.members))
 
@@ -2471,6 +2602,14 @@ async def lifespan(app: FastAPI):
         model=config.llm.model,
     )
 
+    # Register GitHub webhook router (needs config for webhook_secret)
+    app.include_router(
+        create_github_webhook_router(
+            webhook_secret=config.github.webhook_secret,
+            on_event=handle_event,
+        )
+    )
+
     # Scheduler
     scheduler = create_scheduler(
         daily_report_time=config.schedules.daily_report,
@@ -2482,16 +2621,18 @@ async def lifespan(app: FastAPI):
     health_state.scheduler_running = True
     logger.info("Scheduler started")
 
-    # Lark WebSocket (run in background)
+    # Lark WebSocket (run in background thread)
+    main_loop = asyncio.get_running_loop()
     lark_ws = create_lark_ws_client(
         app_id=config.lark.app_id,
         app_secret=config.lark.app_secret,
         on_event=handle_event,
+        loop=main_loop,
     )
 
     async def start_lark_ws():
         try:
-            lark_ws.start()
+            await asyncio.to_thread(lark_ws.start)
             health_state.lark_ws_connected = True
             logger.info("Lark WebSocket connected")
         except Exception:
@@ -2507,19 +2648,14 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
     health_state.scheduler_running = False
     lark_task.cancel()
+    _member_resolver = None
     logger.info("Grove shutdown complete")
 
 
 app = FastAPI(title="Grove — AI Product Manager", lifespan=lifespan)
 
-# Register routes
+# Health check is safe to register at module level (no config dependency)
 app.include_router(create_health_router(health_state))
-app.include_router(
-    create_github_webhook_router(
-        webhook_secret=os.environ.get("GITHUB_WEBHOOK_SECRET", ""),
-        on_event=handle_event,
-    )
-)
 ```
 
 - [ ] **Step 2: Verify app imports cleanly**
@@ -2536,7 +2672,7 @@ git commit -m "feat: main.py — wire up FastAPI, event bus, integrations, and i
 
 ---
 
-### Task 15: Run Full Test Suite
+### Task 16: Run Full Test Suite
 
 - [ ] **Step 1: Run all tests**
 
@@ -2557,7 +2693,7 @@ git commit -m "fix: resolve any test/lint issues from full suite run"
 
 ---
 
-### Task 16: End-to-End Smoke Test
+### Task 17: End-to-End Smoke Test
 
 Verify the Phase 1 acceptance criteria manually:
 
