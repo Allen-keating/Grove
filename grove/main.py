@@ -11,7 +11,9 @@ from grove.config import load_config
 from grove.core.event_bus import EventBus
 from grove.core.events import Event
 from grove.core.member_resolver import MemberResolver
+from grove.core.module_registry import ModuleRegistry, merge_module_state
 from grove.core.storage import Storage
+from grove.ingress.admin import create_admin_router
 from grove.ingress.github_webhook import create_github_webhook_router
 from grove.ingress.health import HealthState, create_health_router
 from grove.ingress.lark_webhook import create_lark_webhook_router
@@ -92,68 +94,58 @@ async def lifespan(app: FastAPI):
         api_key=config.llm.api_key, model=config.llm.model,
     )
 
-    # Conversation manager (needed by prd_generator)
+    # Merge config + runtime state
+    effective_modules = merge_module_state(config.modules, storage)
+
+    # Module registry
+    registry = ModuleRegistry(bus=event_bus, storage=storage)
+    app.state.module_registry = registry
+
+    # Conversation manager
     conv_manager = ConversationManager(storage)
 
-    # Member module (needed by task_breakdown, always created but only registered if enabled)
+    # Always instantiate all modules
     member_module = MemberModule(resolver=resolver, storage=storage)
+    communication = CommunicationModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config, registry=registry,
+    )
+    prd_generator = PRDGeneratorModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config, conv_manager=conv_manager,
+    )
+    task_breakdown = TaskBreakdownModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config,
+        member_module=member_module, resolver=resolver,
+    )
+    daily_report = DailyReportModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config,
+        resolver=resolver, storage=storage,
+    )
+    pr_review = PRReviewModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config,
+    )
+    doc_sync = DocSyncModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config, storage=storage,
+    )
 
-    # Register modules based on config.modules toggles
-    modules_cfg = config.modules
+    # Register via registry (respects merged state)
+    registry.add("communication", communication, enabled=effective_modules["communication"])
+    registry.add("prd_generator", prd_generator, enabled=effective_modules["prd_generator"])
+    registry.add("member", member_module, enabled=effective_modules["member"])
+    registry.add("task_breakdown", task_breakdown, enabled=effective_modules["task_breakdown"])
+    registry.add("daily_report", daily_report, enabled=effective_modules["daily_report"])
+    registry.add("pr_review", pr_review, enabled=effective_modules["pr_review"])
+    registry.add("doc_sync", doc_sync, enabled=effective_modules["doc_sync"])
 
-    if modules_cfg.communication:
-        communication = CommunicationModule(
-            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-            github=app.state.github_client, config=config,
-        )
-        event_bus.register(communication)
-        logger.info("Registered CommunicationModule")
-
-    if modules_cfg.prd_generator:
-        prd_generator = PRDGeneratorModule(
-            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-            github=app.state.github_client, config=config, conv_manager=conv_manager,
-        )
-        event_bus.register(prd_generator)
-        logger.info("Registered PRDGeneratorModule")
-
-    if modules_cfg.member:
-        event_bus.register(member_module)
-        logger.info("Registered MemberModule")
-
-    if modules_cfg.task_breakdown:
-        task_breakdown = TaskBreakdownModule(
-            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-            github=app.state.github_client, config=config,
-            member_module=member_module, resolver=resolver,
-        )
-        event_bus.register(task_breakdown)
-        logger.info("Registered TaskBreakdownModule")
-
-    if modules_cfg.daily_report:
-        daily_report = DailyReportModule(
-            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-            github=app.state.github_client, config=config,
-            resolver=resolver, storage=storage,
-        )
-        event_bus.register(daily_report)
-        logger.info("Registered DailyReportModule")
-
-    if modules_cfg.pr_review:
-        pr_review = PRReviewModule(
-            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-            github=app.state.github_client, config=config,
-        )
-        event_bus.register(pr_review)
-        logger.info("Registered PRReviewModule")
-
-    if modules_cfg.doc_sync:
-        doc_sync = DocSyncModule(
-            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-            github=app.state.github_client, config=config, storage=storage,
-        )
-        event_bus.register(doc_sync)
-        logger.info("Registered DocSyncModule")
+    # Admin API (only if token configured)
+    if config.admin_token:
+        app.include_router(create_admin_router(registry, config.admin_token))
+        logger.info("Admin API enabled at /admin/modules")
 
     # Register webhook routers (need config)
     app.include_router(create_github_webhook_router(

@@ -2,6 +2,7 @@
 .superpowers/
 .grove/logs/
 .grove/memory/profiles/
+.grove/runtime/
 __pycache__/
 *.pyc
 *.pyo
