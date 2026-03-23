@@ -5,7 +5,6 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-import yaml
 
 from grove.config import ModulesConfig
 from grove.core.event_bus import EventBus

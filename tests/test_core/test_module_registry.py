@@ -1,4 +1,3 @@
-import asyncio
 from pathlib import Path
 import pytest
 from grove.core.event_bus import EventBus, subscribe
