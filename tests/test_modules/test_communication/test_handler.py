@@ -1,4 +1,5 @@
 # tests/test_modules/test_communication/test_handler.py
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 from grove.core.event_bus import EventBus
@@ -65,3 +66,53 @@ class TestCommunicationModule:
                      member=member)
         await bus.dispatch(event)
         mod.lark.send_text.assert_called_once()
+
+
+class TestCommunicationToggle:
+    @pytest.fixture
+    def module_with_registry(self, grove_dir: Path):
+        from grove.core.module_registry import ModuleRegistry
+        from grove.core.storage import Storage
+        bus = EventBus()
+        llm = MagicMock()
+        lark = MagicMock()
+        lark.send_text = AsyncMock()
+        github = MagicMock()
+        config = MagicMock()
+        config.lark.chat_id = "oc_test"
+        storage = Storage(grove_dir)
+        registry = ModuleRegistry(bus=bus, storage=storage)
+
+        class DummyMod:
+            pass
+        registry.add("pr_review", DummyMod(), enabled=True)
+
+        module = CommunicationModule(
+            bus=bus, llm=llm, lark=lark, github=github,
+            config=config, registry=registry,
+        )
+        bus.register(module)
+        return module, bus, registry
+
+    async def test_toggle_disable_by_owner(self, module_with_registry):
+        mod, bus, registry = module_with_registry
+        mod._intent_parser.parse = AsyncMock(
+            return_value=ParsedIntent(intent=Intent.TOGGLE_MODULE, topic="disable:pr_review", confidence=0.95))
+        member = Member(name="Allen", github="allen", lark_id="ou_xxx", role="fullstack", authority="owner")
+        event = Event(type=EventType.LARK_MESSAGE, source="lark",
+                     payload={"text": "关闭 PR 审查", "chat_id": "oc_test"},
+                     member=member)
+        await bus.dispatch(event)
+        mod.lark.send_text.assert_called_once()
+        assert "已关闭" in mod.lark.send_text.call_args[0][1]
+
+    async def test_toggle_rejected_for_member(self, module_with_registry):
+        mod, bus, registry = module_with_registry
+        mod._intent_parser.parse = AsyncMock(
+            return_value=ParsedIntent(intent=Intent.TOGGLE_MODULE, topic="disable:pr_review", confidence=0.95))
+        member = Member(name="张三", github="zhangsan", lark_id="ou_xxx", role="frontend", authority="member")
+        event = Event(type=EventType.LARK_MESSAGE, source="lark",
+                     payload={"text": "关闭 PR 审查", "chat_id": "oc_test"},
+                     member=member)
+        await bus.dispatch(event)
+        assert "owner 权限" in mod.lark.send_text.call_args[0][1]

@@ -11,9 +11,21 @@ INTENT_PARSE_PROMPT = """\
 - request_breakdown: 请求拆解需求
 - request_assignment: 请求任务分配
 - continue_conversation: 在已有对话中的后续回复
+- toggle_module: 开启或关闭某个功能模块（如"关闭 PR 审查"、"开启每日巡检"）
+- query_module_status: 查询模块状态（如"模块状态"、"哪些功能开着"）
 - general_chat: 普通闲聊或不相关消息
 
+模块名映射（用于 toggle_module）：
+- 交互沟通 = communication
+- PRD 生成 = prd_generator
+- 任务拆解 = task_breakdown
+- 每日巡检 = daily_report
+- PR 审查 = pr_review
+- 文档同步 = doc_sync
+- 成员管理 = member
+
 以 JSON 格式回复：{"intent": "...", "topic": "...", "confidence": 0.0-1.0}
+- 对于 toggle_module，topic 格式为 "enable:模块key" 或 "disable:模块key"，如 "disable:pr_review"
 只回复 JSON，不要其他内容。
 """
 

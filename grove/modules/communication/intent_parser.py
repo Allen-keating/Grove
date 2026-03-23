@@ -17,6 +17,8 @@ class Intent(StrEnum):
     REQUEST_ASSIGNMENT = "request_assignment"
     CONTINUE_CONVERSATION = "continue_conversation"
     GENERAL_CHAT = "general_chat"
+    TOGGLE_MODULE = "toggle_module"
+    QUERY_MODULE_STATUS = "query_module_status"
     UNKNOWN = "unknown"
 
 @dataclass

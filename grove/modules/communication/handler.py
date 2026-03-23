@@ -14,12 +14,13 @@ logger = logging.getLogger(__name__)
 
 class CommunicationModule:
     def __init__(self, bus: EventBus, llm: LLMClient, lark: LarkClient,
-                 github: GitHubClient, config: GroveConfig):
+                 github: GitHubClient, config: GroveConfig, registry=None):
         self.bus = bus
         self.llm = llm
         self.lark = lark
         self.github = github
         self.config = config
+        self.registry = registry
         self._intent_parser = IntentParser(llm=llm)
 
     @subscribe(EventType.LARK_MESSAGE)
@@ -44,6 +45,10 @@ class CommunicationModule:
             await self._handle_progress_query(event, chat_id)
         elif parsed.intent == Intent.GENERAL_CHAT:
             await self._handle_general_chat(event, text, chat_id)
+        elif parsed.intent == Intent.TOGGLE_MODULE:
+            await self._handle_toggle_module(event, parsed, chat_id)
+        elif parsed.intent == Intent.QUERY_MODULE_STATUS:
+            await self._handle_module_status(event, chat_id)
         elif parsed.intent == Intent.CONTINUE_CONVERSATION:
             await self.bus.dispatch(Event(
                 type=EventType.LARK_MESSAGE, source="internal",
@@ -79,3 +84,52 @@ class CommunicationModule:
         response = await self.llm.chat(system_prompt=system_prompt,
                                        messages=[{"role": "user", "content": text}])
         await self.lark.send_text(chat_id, response)
+
+    async def _handle_toggle_module(self, event, parsed, chat_id):
+        if self.registry is None:
+            await self.lark.send_text(chat_id, "模块管理功能未启用。")
+            return
+        if event.member.authority != "owner":
+            await self.lark.send_text(chat_id,
+                f"{event.member.name}，模块开关需要 owner 权限。")
+            return
+        topic = parsed.topic
+        if ":" not in topic:
+            await self.lark.send_text(chat_id, "无法识别模块名，请说具体一点。")
+            return
+        action, module_name = topic.split(":", 1)
+        if module_name not in self.registry.names:
+            await self.lark.send_text(chat_id, f"未知模块：{module_name}")
+            return
+        MODULE_DISPLAY = {
+            "communication": "交互沟通", "prd_generator": "PRD 生成",
+            "task_breakdown": "任务拆解", "daily_report": "每日巡检",
+            "pr_review": "PR 审查", "doc_sync": "文档同步", "member": "成员管理",
+        }
+        display = MODULE_DISPLAY.get(module_name, module_name)
+        if action == "enable":
+            changed = await self.registry.enable(module_name)
+            msg = f"已开启「{display}」模块。" if changed else f"「{display}」模块已经是开启状态。"
+        elif action == "disable":
+            changed = await self.registry.disable(module_name)
+            msg = f"已关闭「{display}」模块。" if changed else f"「{display}」模块已经是关闭状态。"
+        else:
+            msg = '无法识别操作，请说"开启"或"关闭"。'
+        await self.lark.send_text(chat_id, msg)
+
+    async def _handle_module_status(self, event, chat_id):
+        if self.registry is None:
+            await self.lark.send_text(chat_id, "模块管理功能未启用。")
+            return
+        MODULE_DISPLAY = {
+            "communication": "交互沟通", "prd_generator": "PRD 生成",
+            "task_breakdown": "任务拆解", "daily_report": "每日巡检",
+            "pr_review": "PR 审查", "doc_sync": "文档同步", "member": "成员管理",
+        }
+        status = self.registry.get_status()
+        lines = ["📋 **模块状态**\n"]
+        for m in status:
+            icon = "🟢" if m["enabled"] else "🔴"
+            display = MODULE_DISPLAY.get(m["name"], m["name"])
+            lines.append(f"{icon} {display}")
+        await self.lark.send_text(chat_id, "\n".join(lines))
