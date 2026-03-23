@@ -109,6 +109,7 @@ async def lifespan(app: FastAPI):
     communication = CommunicationModule(
         bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
         github=app.state.github_client, config=config, registry=registry,
+        storage=storage,
     )
     prd_generator = PRDGeneratorModule(
         bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,

@@ -1,7 +1,9 @@
 # grove/modules/communication/handler.py
 """Communication module — the hub for all natural language interactions."""
 import logging
+from datetime import datetime, timezone
 from grove.config import GroveConfig
+from grove.core.storage import Storage
 from grove.core.event_bus import EventBus, subscribe
 from grove.core.events import Event, EventType
 from grove.integrations.github.client import GitHubClient
@@ -14,13 +16,14 @@ logger = logging.getLogger(__name__)
 
 class CommunicationModule:
     def __init__(self, bus: EventBus, llm: LLMClient, lark: LarkClient,
-                 github: GitHubClient, config: GroveConfig, registry=None):
+                 github: GitHubClient, config: GroveConfig, registry=None, storage: Storage | None = None):
         self.bus = bus
         self.llm = llm
         self.lark = lark
         self.github = github
         self.config = config
         self.registry = registry
+        self._storage = storage
         self._intent_parser = IntentParser(llm=llm)
 
     @subscribe(EventType.LARK_MESSAGE)
@@ -31,7 +34,20 @@ class CommunicationModule:
 
         text = event.payload.get("text", "")
         chat_id = event.payload.get("chat_id", "")
-        parsed = await self._intent_parser.parse(text, event.member)
+
+        # Build context for intent parser
+        context = {"chat_type": event.payload.get("chat_type", "group")}
+        if self._storage and event.member:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            dispatch_path = f"memory/dispatch/{today}/{event.member.github}.json"
+            if self._storage.exists(dispatch_path):
+                try:
+                    session = self._storage.read_json(dispatch_path)
+                    context["has_active_dispatch"] = session.get("status") != "confirmed"
+                except Exception:
+                    context["has_active_dispatch"] = False
+
+        parsed = await self._intent_parser.parse(text, event.member, context=context)
         logger.info("Intent: %s (%.2f) from %s: '%s'",
                     parsed.intent, parsed.confidence, event.member.name, text[:50])
 
@@ -53,6 +69,23 @@ class CommunicationModule:
             await self.bus.dispatch(Event(
                 type=EventType.LARK_MESSAGE, source="internal",
                 payload={**event.payload, "intent": "continue_conversation"},
+                member=event.member,
+            ))
+        elif parsed.intent == Intent.SCAN_PROJECT:
+            await self.bus.dispatch(Event(
+                type=EventType.INTERNAL_SCAN_PROJECT, source="internal",
+                payload={"chat_id": chat_id}, member=event.member,
+            ))
+        elif parsed.intent == Intent.QUERY_PROJECT_OVERVIEW:
+            await self.bus.dispatch(Event(
+                type=EventType.INTERNAL_PROJECT_OVERVIEW, source="internal",
+                payload={"chat_id": chat_id}, member=event.member,
+            ))
+        elif parsed.intent == Intent.DISPATCH_NEGOTIATE:
+            await self.bus.dispatch(Event(
+                type=EventType.INTERNAL_DISPATCH_NEGOTIATE, source="internal",
+                payload={"text": text, "chat_id": chat_id,
+                         "sender_id": event.payload.get("sender_id", "")},
                 member=event.member,
             ))
         else:
@@ -105,6 +138,8 @@ class CommunicationModule:
             "communication": "交互沟通", "prd_generator": "PRD 生成",
             "task_breakdown": "任务拆解", "daily_report": "每日巡检",
             "pr_review": "PR 审查", "doc_sync": "文档同步", "member": "成员管理",
+            "project_scanner": "项目扫描", "project_overview": "项目总览",
+            "morning_dispatch": "每日任务",
         }
         display = MODULE_DISPLAY.get(module_name, module_name)
         if action == "enable":
@@ -125,6 +160,8 @@ class CommunicationModule:
             "communication": "交互沟通", "prd_generator": "PRD 生成",
             "task_breakdown": "任务拆解", "daily_report": "每日巡检",
             "pr_review": "PR 审查", "doc_sync": "文档同步", "member": "成员管理",
+            "project_scanner": "项目扫描", "project_overview": "项目总览",
+            "morning_dispatch": "每日任务",
         }
         status = self.registry.get_status()
         lines = ["📋 **模块状态**\n"]

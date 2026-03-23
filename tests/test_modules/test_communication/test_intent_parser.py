@@ -45,3 +45,29 @@ class TestIntentParser:
         member = Member(name="张三", github="zhangsan", lark_id="ou_xxx", role="frontend")
         result = await parser.parse("hello", member)
         assert result.intent == Intent.UNKNOWN
+
+
+class TestIntentParserContext:
+    @pytest.mark.asyncio
+    async def test_dispatch_negotiate_priority(self):
+        """Active dispatch + p2p chat → DISPATCH_NEGOTIATE without LLM call."""
+        llm = AsyncMock()
+        parser = IntentParser(llm=llm)
+        member = Member(name="Test", github="test", lark_id="ou_test", role="backend")
+        context = {"has_active_dispatch": True, "chat_type": "p2p"}
+        result = await parser.parse("去掉 #205", member, context=context)
+        assert result.intent == Intent.DISPATCH_NEGOTIATE
+        assert result.confidence == 0.95
+        llm.chat.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_negotiate_not_in_group(self):
+        """Active dispatch but group chat → normal LLM parsing."""
+        llm = AsyncMock()
+        llm.chat.return_value = '{"intent": "general_chat", "topic": "", "confidence": 0.8}'
+        parser = IntentParser(llm=llm)
+        member = Member(name="Test", github="test", lark_id="ou_test", role="backend")
+        context = {"has_active_dispatch": True, "chat_type": "group"}
+        result = await parser.parse("去掉 #205", member, context=context)
+        assert result.intent == Intent.GENERAL_CHAT
+        llm.chat.assert_called_once()

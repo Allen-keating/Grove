@@ -13,6 +13,8 @@ INTENT_PARSE_PROMPT = """\
 - continue_conversation: 在已有对话中的后续回复
 - toggle_module: 开启或关闭某个功能模块（如"关闭 PR 审查"、"开启每日巡检"）
 - query_module_status: 查询模块状态（如"模块状态"、"哪些功能开着"）
+- scan_project: 请求扫描项目或生成项目文档（如"扫描项目"、"生成项目文档"、"更新项目文档"）
+- query_project_overview: 查询项目进度总览（如"项目总览"、"项目进度"、"项目进度报告"）
 - general_chat: 普通闲聊或不相关消息
 
 模块名映射（用于 toggle_module）：
@@ -23,6 +25,9 @@ INTENT_PARSE_PROMPT = """\
 - PR 审查 = pr_review
 - 文档同步 = doc_sync
 - 成员管理 = member
+- 项目扫描 = project_scanner
+- 项目总览 = project_overview
+- 每日任务 = morning_dispatch
 
 以 JSON 格式回复：{"intent": "...", "topic": "...", "confidence": 0.0-1.0}
 - 对于 toggle_module，topic 格式为 "enable:模块key" 或 "disable:模块key"，如 "disable:pr_review"

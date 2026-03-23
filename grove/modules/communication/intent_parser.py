@@ -19,6 +19,9 @@ class Intent(StrEnum):
     GENERAL_CHAT = "general_chat"
     TOGGLE_MODULE = "toggle_module"
     QUERY_MODULE_STATUS = "query_module_status"
+    SCAN_PROJECT = "scan_project"
+    QUERY_PROJECT_OVERVIEW = "query_project_overview"
+    DISPATCH_NEGOTIATE = "dispatch_negotiate"
     UNKNOWN = "unknown"
 
 @dataclass
@@ -32,8 +35,14 @@ class IntentParser:
     def __init__(self, llm: LLMClient):
         self.llm = llm
 
-    async def parse(self, text: str, member: Member) -> ParsedIntent:
+    async def parse(self, text: str, member: Member, context: dict | None = None) -> ParsedIntent:
         from grove.modules.communication.prompts import INTENT_PARSE_PROMPT
+        ctx = context or {}
+
+        # Priority 1: Active dispatch session in private chat
+        if ctx.get("has_active_dispatch") and ctx.get("chat_type") == "p2p":
+            return ParsedIntent(intent=Intent.DISPATCH_NEGOTIATE, topic=text, confidence=0.95)
+
         try:
             response = await self.llm.chat(
                 system_prompt=INTENT_PARSE_PROMPT,

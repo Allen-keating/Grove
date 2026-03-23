@@ -116,3 +116,35 @@ class TestCommunicationToggle:
                      member=member)
         await bus.dispatch(event)
         assert "owner 权限" in mod.lark.send_text.call_args[0][1]
+
+
+class TestCommunicationNewIntents:
+    @pytest.fixture
+    def handler_with_storage(self):
+        bus = MagicMock()
+        bus.dispatch = AsyncMock()
+        llm = AsyncMock()
+        llm.chat.return_value = '{"intent": "scan_project", "topic": "", "confidence": 0.9}'
+        lark = AsyncMock()
+        github = MagicMock()
+        config = MagicMock()
+        config.lark.chat_id = "oc_test"
+        storage = MagicMock()
+        storage.exists.return_value = False
+        return CommunicationModule(
+            bus=bus, llm=llm, lark=lark, github=github, config=config, storage=storage,
+        )
+
+    @pytest.mark.asyncio
+    async def test_scan_project_dispatches_event(self, handler_with_storage):
+        handler = handler_with_storage
+        from grove.core.events import Event, EventType, Member
+        event = Event(
+            type=EventType.LARK_MESSAGE, source="lark",
+            payload={"text": "扫描项目", "chat_id": "oc_test"},
+            member=Member(name="Test", github="test", lark_id="ou_test", role="backend"),
+        )
+        await handler.on_lark_message(event)
+        handler.bus.dispatch.assert_called_once()
+        dispatched = handler.bus.dispatch.call_args[0][0]
+        assert dispatched.type == EventType.INTERNAL_SCAN_PROJECT
