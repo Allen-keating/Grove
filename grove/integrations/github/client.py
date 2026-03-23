@@ -105,6 +105,23 @@ class GitHubClient:
         return content.decoded_content.decode("utf-8")
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def read_directory_files(self, repo: str, path: str, suffix: str = ".md") -> dict[str, str]:
+        """Read all files in a repo directory. Returns {filename: content}."""
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        try:
+            contents = r.get_contents(path)
+        except Exception:
+            return {}
+        if not isinstance(contents, list):
+            contents = [contents]
+        return {
+            item.name: item.decoded_content.decode("utf-8")
+            for item in contents
+            if item.type == "file" and item.name.endswith(suffix)
+        }
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
     def update_issue(self, repo: str, issue_number: int, **kwargs) -> None:
         """Update an issue. Accepts: title, body, state, labels, assignee, milestone."""
         gh = self._get_github()
@@ -165,3 +182,60 @@ class GitHubClient:
              "open_issues": m.open_issues, "closed_issues": m.closed_issues}
             for m in milestones
         ]
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def get_repo_tree(self, repo: str, recursive: bool = True) -> list[dict]:
+        """Get the full repository file tree via Git Trees API."""
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        default_branch = r.default_branch
+        tree = r.get_git_tree(default_branch, recursive=recursive)
+        IGNORE_PREFIXES = (
+            "node_modules/", ".git/", "__pycache__/", "vendor/",
+            ".venv/", "venv/", "dist/", "build/", ".tox/",
+        )
+        return [
+            {"path": item.path, "type": item.type, "size": item.size or 0}
+            for item in tree.tree
+            if not any(item.path.startswith(p) or f"/{p}" in item.path for p in IGNORE_PREFIXES)
+        ]
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def get_commit_detail(self, repo: str, sha: str) -> dict:
+        """Get detailed commit info including per-file changes."""
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        commit = r.get_commit(sha)
+        return {
+            "sha": commit.sha[:7],
+            "message": commit.commit.message.split("\n")[0],
+            "author": commit.commit.author.name,
+            "date": commit.commit.author.date.isoformat(),
+            "files": [
+                {
+                    "filename": f.filename,
+                    "status": f.status,
+                    "additions": f.additions,
+                    "deletions": f.deletions,
+                }
+                for f in (commit.files or [])
+            ],
+        }
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def list_recent_commits_detailed(
+        self, repo: str, since: str, until: str | None = None, max_commits: int = 200,
+    ) -> list[dict]:
+        """List recent commits with per-file change details. Caps at max_commits."""
+        from datetime import datetime
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        kwargs = {"since": datetime.fromisoformat(since)}
+        if until:
+            kwargs["until"] = datetime.fromisoformat(until)
+        commits = r.get_commits(**kwargs)
+        results = []
+        for c in commits[:max_commits]:
+            detail = self.get_commit_detail(repo, c.sha)
+            results.append(detail)
+        return results
