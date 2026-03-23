@@ -92,57 +92,68 @@ async def lifespan(app: FastAPI):
         api_key=config.llm.api_key, model=config.llm.model,
     )
 
-    # Conversation manager
+    # Conversation manager (needed by prd_generator)
     conv_manager = ConversationManager(storage)
 
-    # Register modules
-    communication = CommunicationModule(
-        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-        github=app.state.github_client, config=config,
-    )
-    event_bus.register(communication)
-    logger.info("Registered CommunicationModule")
-
-    prd_generator = PRDGeneratorModule(
-        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-        github=app.state.github_client, config=config, conv_manager=conv_manager,
-    )
-    event_bus.register(prd_generator)
-    logger.info("Registered PRDGeneratorModule")
-
-    # Member module
+    # Member module (needed by task_breakdown, always created but only registered if enabled)
     member_module = MemberModule(resolver=resolver, storage=storage)
-    event_bus.register(member_module)
-    logger.info("Registered MemberModule")
 
-    # Task breakdown module
-    task_breakdown = TaskBreakdownModule(
-        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-        github=app.state.github_client, config=config,
-        member_module=member_module, resolver=resolver,
-    )
-    event_bus.register(task_breakdown)
-    logger.info("Registered TaskBreakdownModule")
+    # Register modules based on config.modules toggles
+    modules_cfg = config.modules
 
-    daily_report = DailyReportModule(
-        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-        github=app.state.github_client, config=config,
-        resolver=resolver, storage=storage,
-    )
-    event_bus.register(daily_report)
-    logger.info("Registered DailyReportModule")
+    if modules_cfg.communication:
+        communication = CommunicationModule(
+            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+            github=app.state.github_client, config=config,
+        )
+        event_bus.register(communication)
+        logger.info("Registered CommunicationModule")
 
-    pr_review = PRReviewModule(
-        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-        github=app.state.github_client, config=config)
-    event_bus.register(pr_review)
-    logger.info("Registered PRReviewModule")
+    if modules_cfg.prd_generator:
+        prd_generator = PRDGeneratorModule(
+            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+            github=app.state.github_client, config=config, conv_manager=conv_manager,
+        )
+        event_bus.register(prd_generator)
+        logger.info("Registered PRDGeneratorModule")
 
-    doc_sync = DocSyncModule(
-        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
-        github=app.state.github_client, config=config, storage=storage)
-    event_bus.register(doc_sync)
-    logger.info("Registered DocSyncModule")
+    if modules_cfg.member:
+        event_bus.register(member_module)
+        logger.info("Registered MemberModule")
+
+    if modules_cfg.task_breakdown:
+        task_breakdown = TaskBreakdownModule(
+            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+            github=app.state.github_client, config=config,
+            member_module=member_module, resolver=resolver,
+        )
+        event_bus.register(task_breakdown)
+        logger.info("Registered TaskBreakdownModule")
+
+    if modules_cfg.daily_report:
+        daily_report = DailyReportModule(
+            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+            github=app.state.github_client, config=config,
+            resolver=resolver, storage=storage,
+        )
+        event_bus.register(daily_report)
+        logger.info("Registered DailyReportModule")
+
+    if modules_cfg.pr_review:
+        pr_review = PRReviewModule(
+            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+            github=app.state.github_client, config=config,
+        )
+        event_bus.register(pr_review)
+        logger.info("Registered PRReviewModule")
+
+    if modules_cfg.doc_sync:
+        doc_sync = DocSyncModule(
+            bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+            github=app.state.github_client, config=config, storage=storage,
+        )
+        event_bus.register(doc_sync)
+        logger.info("Registered DocSyncModule")
 
     # Register webhook routers (need config)
     app.include_router(create_github_webhook_router(

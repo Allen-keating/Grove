@@ -58,6 +58,17 @@ class DocSyncConfig(BaseModel):
     github_docs_path: str = "docs/prd/"
 
 
+class ModulesConfig(BaseModel):
+    """Control which modules are enabled. All enabled by default."""
+    communication: bool = True
+    prd_generator: bool = True
+    task_breakdown: bool = True
+    daily_report: bool = True
+    pr_review: bool = True
+    doc_sync: bool = True
+    member: bool = True
+
+
 class GroveConfig(BaseModel):
     version: int = 1
     project: ProjectConfig
@@ -68,6 +79,7 @@ class GroveConfig(BaseModel):
     work_hours: WorkHoursConfig = WorkHoursConfig()
     schedules: SchedulesConfig = SchedulesConfig()
     doc_sync: DocSyncConfig = DocSyncConfig()
+    modules: ModulesConfig = ModulesConfig()
 
 
 _ENV_VAR_PATTERN = re.compile(r"\$\{(\w+)\}")
