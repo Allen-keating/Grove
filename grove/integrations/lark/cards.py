@@ -98,3 +98,68 @@ def build_notification_card(title, content, color="blue"):
             {"tag": "div", "text": {"tag": "lark_md", "content": content}},
         ],
     }
+
+
+def build_project_overview_card(
+    date: str, health: str, milestones: list[dict],
+    trends: dict, prd_completion: dict | None,
+    risks: list[str], suggestions: str,
+) -> dict:
+    ms_lines = [
+        f"**{ms['title']}** {'█' * (ms['progress_pct'] // 10)}{'░' * (10 - ms['progress_pct'] // 10)} "
+        f"{ms['progress_pct']}% ({ms['closed']}/{ms['closed'] + ms['open']})"
+        for ms in milestones
+    ]
+    ms_text = "\n".join(ms_lines) if ms_lines else "暂无里程碑"
+
+    trend_text = (
+        f"完成 Issues: {trends.get('closed_issues', 0)}\n"
+        f"合并 PR: {trends.get('merged_prs', 0)}\n"
+        f"新增 Issues: {trends.get('new_issues', 0)}"
+    )
+
+    elements = [
+        {"tag": "div", "text": {"tag": "lark_md", "content": f"**健康度：** {health}"}},
+        {"tag": "hr"},
+        {"tag": "div", "text": {"tag": "lark_md", "content": f"**📌 里程碑**\n{ms_text}"}},
+        {"tag": "hr"},
+        {"tag": "div", "text": {"tag": "lark_md", "content": f"**📈 本周趋势（7 天）**\n{trend_text}"}},
+    ]
+
+    if prd_completion:
+        prd_text = (
+            f"✅ 已完成 {prd_completion.get('done', 0)}\n"
+            f"🔄 进行中 {prd_completion.get('in_progress', 0)}\n"
+            f"⬚ 未开始 {prd_completion.get('not_started', 0)}"
+        )
+        elements.append({"tag": "hr"})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📋 PRD 完成度**\n{prd_text}"}})
+
+    risk_text = "\n".join(f"⚠️ {r}" for r in risks) if risks else "✅ 无风险"
+    elements.append({"tag": "hr"})
+    elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**风险**\n{risk_text}"}})
+    elements.append({"tag": "hr"})
+    elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**💡 建议**\n{suggestions}"}})
+
+    return {
+        "header": {"title": {"tag": "plain_text", "content": f"📊 项目进度总览 — {date}"}, "template": "purple"},
+        "elements": elements,
+    }
+
+
+def build_dispatch_summary_card(date: str, member_tasks: list[dict]) -> dict:
+    lines = []
+    for mt in member_tasks:
+        status = "✅" if mt.get("confirmed") else "⏰ 未确认"
+        lines.append(f"**👤 {mt['name']}** {status}")
+        for t in mt.get("tasks", []):
+            priority_icon = "🔴" if t["priority"] == "P0" else "🟡" if t["priority"] == "P1" else "🔵"
+            lines.append(f"  · {priority_icon} #{t['issue_number']} {t['title']}")
+        lines.append("")
+
+    return {
+        "header": {"title": {"tag": "plain_text", "content": f"🌳 今日团队任务 — {date}"}, "template": "green"},
+        "elements": [
+            {"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}},
+        ],
+    }
