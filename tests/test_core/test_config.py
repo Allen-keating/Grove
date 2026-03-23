@@ -65,3 +65,36 @@ doc_sync:
         )
         config = load_config(grove_dir)
         assert config.lark.app_id == "env_resolved_id"
+
+
+def test_dispatch_config_defaults():
+    from grove.config import DispatchConfig
+    dc = DispatchConfig()
+    assert dc.confirm_deadline_minutes == 75
+    assert dc.max_negotiate_rounds == 10
+
+
+def test_schedules_config_new_fields():
+    from grove.config import SchedulesConfig
+    sc = SchedulesConfig()
+    assert sc.project_overview == "10:00"
+    assert sc.morning_dispatch == "09:15"
+
+
+def test_modules_config_new_fields():
+    from grove.config import ModulesConfig
+    mc = ModulesConfig()
+    assert mc.project_scanner is True
+    assert mc.project_overview is True
+    assert mc.morning_dispatch is True
+
+
+def test_grove_config_has_dispatch():
+    from grove.config import GroveConfig, DispatchConfig
+    gc = GroveConfig(
+        project={"name": "t", "repo": "o/r"},
+        lark={"app_id": "a", "app_secret": "s", "chat_id": "c", "space_id": "sp"},
+        github={"app_id": "1", "private_key_path": "/k", "installation_id": "2"},
+        llm={"api_key": "k"},
+    )
+    assert isinstance(gc.dispatch, DispatchConfig)

@@ -51,11 +51,18 @@ class WorkHoursConfig(BaseModel):
 class SchedulesConfig(BaseModel):
     daily_report: str = "09:00"
     doc_drift_check: str = "09:00"
+    project_overview: str = "10:00"
+    morning_dispatch: str = "09:15"
 
 
 class DocSyncConfig(BaseModel):
     auto_update_level: str = "moderate"
     github_docs_path: str = "docs/prd/"
+
+
+class DispatchConfig(BaseModel):
+    confirm_deadline_minutes: int = 75
+    max_negotiate_rounds: int = 10
 
 
 class ModulesConfig(BaseModel):
@@ -67,6 +74,9 @@ class ModulesConfig(BaseModel):
     pr_review: bool = True
     doc_sync: bool = True
     member: bool = True
+    project_scanner: bool = True
+    project_overview: bool = True
+    morning_dispatch: bool = True
 
 
 class GroveConfig(BaseModel):
@@ -81,6 +91,7 @@ class GroveConfig(BaseModel):
     doc_sync: DocSyncConfig = DocSyncConfig()
     modules: ModulesConfig = ModulesConfig()
     admin_token: str = ""  # Empty = admin endpoints not mounted
+    dispatch: DispatchConfig = DispatchConfig()
 
 
 _ENV_VAR_PATTERN = re.compile(r"\$\{(\w+)\}")

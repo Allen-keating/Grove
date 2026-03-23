@@ -70,3 +70,12 @@ class TestEvent:
             member=member,
         )
         assert event.member.name == "张三"
+
+
+def test_new_event_types_exist():
+    from grove.core.events import EventType
+    assert EventType.INTERNAL_SCAN_PROJECT == "internal.scan_project"
+    assert EventType.INTERNAL_PROJECT_OVERVIEW == "internal.project_overview"
+    assert EventType.CRON_PROJECT_OVERVIEW == "cron.project_overview"
+    assert EventType.CRON_MORNING_DISPATCH == "cron.morning_dispatch"
+    assert EventType.INTERNAL_DISPATCH_NEGOTIATE == "internal.dispatch_negotiate"

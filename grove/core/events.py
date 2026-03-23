@@ -33,6 +33,11 @@ class EventType(StrEnum):
     INTERNAL_PRD_FINALIZED = "internal.prd_finalized"
     INTERNAL_TASK_ASSIGNED = "internal.task_assigned"
     INTERNAL_RISK_DETECTED = "internal.risk_detected"
+    INTERNAL_SCAN_PROJECT = "internal.scan_project"
+    INTERNAL_PROJECT_OVERVIEW = "internal.project_overview"
+    CRON_PROJECT_OVERVIEW = "cron.project_overview"
+    CRON_MORNING_DISPATCH = "cron.morning_dispatch"
+    INTERNAL_DISPATCH_NEGOTIATE = "internal.dispatch_negotiate"
 
 
 @dataclass
