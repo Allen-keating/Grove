@@ -80,6 +80,7 @@ class GroveConfig(BaseModel):
     schedules: SchedulesConfig = SchedulesConfig()
     doc_sync: DocSyncConfig = DocSyncConfig()
     modules: ModulesConfig = ModulesConfig()
+    admin_token: str = ""  # Empty = admin endpoints not mounted
 
 
 _ENV_VAR_PATTERN = re.compile(r"\$\{(\w+)\}")
