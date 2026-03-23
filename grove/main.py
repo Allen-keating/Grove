@@ -30,6 +30,9 @@ from grove.modules.task_breakdown.handler import TaskBreakdownModule
 from grove.modules.daily_report.handler import DailyReportModule
 from grove.modules.pr_review.handler import PRReviewModule
 from grove.modules.doc_sync.handler import DocSyncModule
+from grove.modules.project_scanner.handler import ProjectScannerModule
+from grove.modules.project_overview.handler import ProjectOverviewModule
+from grove.modules.morning_dispatch.handler import MorningDispatchModule
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -134,6 +137,19 @@ async def lifespan(app: FastAPI):
         bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
         github=app.state.github_client, config=config, storage=storage,
     )
+    project_scanner = ProjectScannerModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config, storage=storage,
+    )
+    project_overview = ProjectOverviewModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config, storage=storage,
+    )
+    morning_dispatch = MorningDispatchModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config, storage=storage,
+        resolver=resolver, member_module=member_module,
+    )
 
     # Register via registry (respects merged state)
     registry.add("communication", communication, enabled=effective_modules["communication"])
@@ -143,6 +159,9 @@ async def lifespan(app: FastAPI):
     registry.add("daily_report", daily_report, enabled=effective_modules["daily_report"])
     registry.add("pr_review", pr_review, enabled=effective_modules["pr_review"])
     registry.add("doc_sync", doc_sync, enabled=effective_modules["doc_sync"])
+    registry.add("project_scanner", project_scanner, enabled=effective_modules["project_scanner"])
+    registry.add("project_overview", project_overview, enabled=effective_modules["project_overview"])
+    registry.add("morning_dispatch", morning_dispatch, enabled=effective_modules["morning_dispatch"])
 
     # Admin API (only if token configured)
     if config.admin_token:
