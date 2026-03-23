@@ -39,6 +39,7 @@ def register(self, module: Any, name: str | None = None) -> None:
 
 - `name` 默认取 `type(module).__name__`（向后兼容）
 - 新增 `_module_handlers: dict[str, list[tuple[str, Callable]]]` 记录 module_name → [(event_type, handler), ...]
+- `register()` 同时填充 `_handlers`（用于 dispatch）和 `_module_handlers`（用于 unregister 查找）
 
 ### 2.2 新增 unregister()
 
@@ -76,14 +77,17 @@ class ModuleEntry:
 | 方法 | 说明 |
 |------|------|
 | `add(name, instance, enabled)` | 添加模块，enabled 时注册到 EventBus |
-| `enable(name) -> bool` | 启用模块（幂等），注册 handler |
-| `disable(name) -> bool` | 禁用模块（幂等），注销 handler |
+| `enable(name) -> bool` | 启用模块（幂等），调用 `event_bus.register(instance, name)` 重新扫描订阅。返回 True=状态变更，False=已是启用状态 |
+| `disable(name) -> bool` | 禁用模块（幂等），调用 `event_bus.unregister(name)`。返回 True=状态变更，False=已是禁用状态 |
 | `get_status() -> list[dict]` | 返回所有模块 `[{name, enabled, type}]` |
 | `get(name) -> ModuleEntry | None` | 获取单个模块信息 |
 
 ### 3.3 依赖警告
 
-disable `member` 时如果 `task_breakdown` 启用 → 记 warning 日志（不阻止操作）。
+- disable `member` 时如果 `task_breakdown` 启用 → 记 warning 日志（不阻止操作）。
+- disable `communication` 会导致飞书命令通道失效，只能通过 Admin API 重新启用。
+- 已禁用的模块仍持有 `self.bus` 引用，理论上可通过其他代码路径发出事件，这是预期行为（实例保留）。
+- enable/disable 操作通过 `asyncio.Lock` 串行化，防止 API 和飞书命令并发写入 runtime state 文件冲突。
 
 ---
 
@@ -108,7 +112,15 @@ modules:
 ```
 1. 读取 config.yml 的 modules.* → 初始值
 2. 如果 .grove/runtime/modules-state.yml 存在 → 覆盖对应字段
-3. 最终值传给 registry.add()
+3. runtime 文件中的未知 key（不在 ModulesConfig 中的）→ 忽略 + 记 warning 日志
+4. 最终值传给 registry.add()
+```
+
+合并函数位于 `grove/core/module_registry.py`：
+
+```python
+def merge_module_state(modules_cfg: ModulesConfig, storage: Storage) -> dict[str, bool]:
+    """合并 config.yml 和 runtime state，runtime 优先。"""
 ```
 
 ### 4.4 写入时机
@@ -237,8 +249,10 @@ registry.add("prd_generator", prd_generator, enabled=effective_modules["prd_gene
 
 ```python
 if config.admin_token:
-    app.include_router(create_admin_router(registry, config.admin_token, storage))
+    app.include_router(create_admin_router(registry, config.admin_token))
 ```
+
+Admin 路由不需要 `storage` — 持久化由 `ModuleRegistry` 内部处理（构造时接收 `storage`）。
 
 ---
 
@@ -247,7 +261,7 @@ if config.admin_token:
 | 文件 | 操作 | 说明 |
 |------|------|------|
 | `grove/core/event_bus.py` | 修改 | +name 参数 +_module_handlers +unregister() |
-| `grove/core/module_registry.py` | 新建 | ModuleRegistry 类 |
+| `grove/core/module_registry.py` | 新建 | ModuleRegistry 类 + merge_module_state() |
 | `grove/ingress/admin.py` | 新建 | Admin API 路由 |
 | `grove/config.py` | 修改 | +admin_token 字段 |
 | `grove/main.py` | 修改 | 用 registry 替代直接注册，合并 runtime state |
