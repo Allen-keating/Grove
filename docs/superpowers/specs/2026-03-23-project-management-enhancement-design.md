@@ -35,7 +35,7 @@ classify_commit(message: str, files_changed: list[str]) -> str:
   3. 返回："feature" | "bugfix" | "refactor" | "docs" | "chore"
 ```
 
-`classify_commit` 为 async 函数（因 LLM fallback 需要 await），供 Daily Report 和 Project Overview 共用。
+`classify_commit` 为 async 函数（因 LLM fallback 需要 await），供 Daily Report 和 Project Overview 共用。注意：`classify_commit` 由消费方模块调用（Daily Report handler、Project Scanner handler），而非在 GitHub Client 内部调用。GitHub Client 只负责获取原始数据。
 
 ### `list_recent_commits_detailed` 与 `list_recent_commits` 的关系
 
@@ -219,8 +219,9 @@ collectors.py 返回值增加：
 
 GitHub Issue markdown 同步增加对应表格。
 
-### 性能
+### 实现注意事项
 
+- 现有 `DailyDataCollector.collect()` 是同步方法。引入 async 的 `classify_commit` 后，`collect()` 需改为 async，或将分类逻辑移到 handler 层在 `collect()` 返回后执行
 - 规则匹配零成本，仅 <20% 情况 fallback LLM
 - 24h 内通常 <50 个 commit，API 调用可控
 
@@ -408,6 +409,52 @@ dispatch:
   max_negotiate_rounds: 10        # 最大协商轮数
 ```
 
+### Pydantic 配置模型变更
+
+```python
+# config.py 新增
+class DispatchConfig(BaseModel):
+    confirm_deadline_minutes: int = 75
+    max_negotiate_rounds: int = 10
+
+# SchedulesConfig 新增字段
+class SchedulesConfig(BaseModel):
+    daily_report: str = "09:00"
+    doc_drift_check: str = "09:00"
+    project_overview: str = "10:00"      # 新增
+    morning_dispatch: str = "09:15"      # 新增
+
+# ModulesConfig 新增字段
+class ModulesConfig(BaseModel):
+    # ...existing 7 modules...
+    project_scanner: bool = True         # 新增
+    project_overview: bool = True        # 新增
+    morning_dispatch: bool = True        # 新增
+
+# GroveConfig 新增
+class GroveConfig(BaseModel):
+    # ...existing fields...
+    dispatch: DispatchConfig = DispatchConfig()  # 新增
+```
+
+### Scheduler 重构
+
+现有 `create_scheduler(bus, daily_report_time, doc_drift_time)` 改为 dict 入参：
+
+```python
+def create_scheduler(bus: EventBus, schedules: SchedulesConfig) -> AsyncIOScheduler:
+    # 从 schedules 对象读取各时间点，动态注册 cron job
+```
+
+### `merge_module_state` 新增映射
+
+```python
+# module_registry.py merge_module_state() 中 result dict 新增：
+"project_scanner": config.modules.project_scanner,
+"project_overview": config.modules.project_overview,
+"morning_dispatch": config.modules.morning_dispatch,
+```
+
 ### 完整事件流
 
 ```
@@ -497,3 +544,18 @@ tests/integrations/test_github_client.py      # 追加新方法测试
 | Lark Cards | 0 | 1 | 低 |
 | 测试 | 3 | 1 | — |
 | **合计** | **18** | **12** | — |
+
+---
+
+## 10. 建议实现顺序
+
+模块间存在数据依赖，建议按以下顺序实现：
+
+1. **GitHub Client 增强 + Commit Classifier** — 数据基础层，所有新模块依赖
+2. **Events + Config + Registry + Scheduler + Main** — 基础设施接线
+3. **Daily Report 增强** — 产出 `commits_by_type` 快照，Project Overview 依赖此数据
+4. **Communication 增强** — 新增意图路由，为新模块提供入口
+5. **Project Scanner** — 生成逆向 PRD，Project Overview 的 PRD 完成度对比依赖此文档
+6. **Project Overview Report** — 依赖 Daily Report 快照 + 逆向 PRD
+7. **Morning Task Dispatch** — 最复杂，依赖 Member 负载数据 + Daily Report 快照
+8. **Lark Cards** — 可与对应模块同步实现
