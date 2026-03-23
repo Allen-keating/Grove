@@ -16,6 +16,9 @@ def grove_dir(tmp_path: Path) -> Path:
     (grove / "memory" / "decisions").mkdir()
     (grove / "memory" / "conversations").mkdir()
     (grove / "docs-sync").mkdir()
+    (grove / "memory" / "dispatch").mkdir()
+    (grove / "memory" / "project-scan").mkdir()
+    (grove / "runtime").mkdir()
     return grove
 
 
@@ -96,10 +99,28 @@ work_hours:
 schedules:
   daily_report: "09:00"
   doc_drift_check: "09:00"
+  project_overview: "10:00"
+  morning_dispatch: "09:15"
 
 doc_sync:
   auto_update_level: "moderate"
   github_docs_path: "docs/prd/"
+
+dispatch:
+  confirm_deadline_minutes: 75
+  max_negotiate_rounds: 10
+
+modules:
+  communication: true
+  prd_generator: true
+  task_breakdown: true
+  daily_report: true
+  pr_review: true
+  doc_sync: true
+  member: true
+  project_scanner: true
+  project_overview: true
+  morning_dispatch: true
 """,
         encoding="utf-8",
     )
