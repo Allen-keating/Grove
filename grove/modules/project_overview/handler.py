@@ -98,7 +98,7 @@ class ProjectOverviewModule:
             doc_id = doc_info.get("doc_id")
             if not doc_id:
                 return None
-            prd_content = await self.lark.read_doc(doc_id)
+            await self.lark.read_doc(doc_id)  # verify doc exists
             return {"done": data["closed_issues"], "in_progress": data["open_issues"],
                     "not_started": 0}
         except (FileNotFoundError, Exception):

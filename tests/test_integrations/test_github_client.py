@@ -1,4 +1,6 @@
 # tests/test_integrations/test_github_client.py
+from unittest.mock import MagicMock
+
 from grove.integrations.github.client import GitHubClient
 from grove.integrations.github.models import IssueData
 
@@ -26,7 +28,6 @@ class TestGitHubClient:
         assert "bug" in issue.labels
 
 
-from unittest.mock import MagicMock
 
 class TestGitHubClientNewMethods:
     def _make_client(self):

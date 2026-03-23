@@ -60,6 +60,36 @@ def lark_content_to_markdown(doc_data: dict) -> str:
     return "\n\n".join(lines)
 
 
+def _markdown_to_sdk_blocks(markdown: str) -> list:
+    """Convert markdown text to a list of Lark SDK Block objects for document creation."""
+    from lark_oapi.api.docx.v1 import Block, Text, TextElement, TextRun
+
+    def _make_text(content: str):
+        return Text.builder() \
+            .elements([
+                TextElement.builder()
+                .text_run(TextRun.builder().content(content).build())
+                .build()
+            ]).build()
+
+    blocks = []
+    for line in markdown.strip().split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("### "):
+            blocks.append(Block.builder().block_type(5).heading3(_make_text(stripped[4:])).build())
+        elif stripped.startswith("## "):
+            blocks.append(Block.builder().block_type(4).heading2(_make_text(stripped[3:])).build())
+        elif stripped.startswith("# "):
+            blocks.append(Block.builder().block_type(3).heading1(_make_text(stripped[2:])).build())
+        elif stripped.startswith("- ") or stripped.startswith("* "):
+            blocks.append(Block.builder().block_type(14).bullet(_make_text(stripped[2:])).build())
+        else:
+            blocks.append(Block.builder().block_type(2).text(_make_text(stripped)).build())
+    return blocks
+
+
 class LarkClient:
     def __init__(self, app_id: str, app_secret: str):
         self.app_id = app_id
@@ -158,5 +188,65 @@ class LarkClient:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
     async def update_doc(self, doc_id: str, markdown_content: str) -> None:
-        """Update a Lark document (simplified — logs for MVP)."""
-        logger.info("update_doc called for %s (content length: %d)", doc_id, len(markdown_content))
+        """Update a Lark document by replacing all content blocks."""
+        from lark_oapi.api.docx.v1 import (
+            ListDocumentBlockRequest,
+            BatchDeleteDocumentBlockChildrenRequest,
+            BatchDeleteDocumentBlockChildrenRequestBody,
+            CreateDocumentBlockChildrenRequest,
+            CreateDocumentBlockChildrenRequestBody,
+        )
+
+        def _update():
+            client = self._get_client()
+
+            # Step 1: List existing blocks to find the page block and child count
+            list_req = ListDocumentBlockRequest.builder() \
+                .document_id(doc_id) \
+                .build()
+            list_resp = client.docx.v1.document_block.list(list_req)
+            if not list_resp.success():
+                raise RuntimeError(f"Lark list blocks error: {list_resp.code} {list_resp.msg}")
+
+            blocks = list_resp.data.items or []
+            if not blocks:
+                logger.warning("No blocks found in doc %s, cannot update", doc_id)
+                return
+
+            page_block = blocks[0]
+            page_block_id = page_block.block_id
+            num_children = len(page_block.children) if page_block.children else 0
+
+            # Step 2: Delete all children of the page block
+            if num_children > 0:
+                del_req = BatchDeleteDocumentBlockChildrenRequest.builder() \
+                    .document_id(doc_id) \
+                    .block_id(page_block_id) \
+                    .request_body(
+                        BatchDeleteDocumentBlockChildrenRequestBody.builder()
+                        .start_index(0)
+                        .end_index(num_children)
+                        .build()
+                    ).build()
+                del_resp = client.docx.v1.document_block_children.batch_delete(del_req)
+                if not del_resp.success():
+                    raise RuntimeError(f"Lark delete blocks error: {del_resp.code} {del_resp.msg}")
+
+            # Step 3: Create new content blocks from markdown
+            new_blocks = _markdown_to_sdk_blocks(markdown_content)
+            if new_blocks:
+                create_req = CreateDocumentBlockChildrenRequest.builder() \
+                    .document_id(doc_id) \
+                    .block_id(page_block_id) \
+                    .request_body(
+                        CreateDocumentBlockChildrenRequestBody.builder()
+                        .children(new_blocks)
+                        .index(0)
+                        .build()
+                    ).build()
+                create_resp = client.docx.v1.document_block_children.create(create_req)
+                if not create_resp.success():
+                    raise RuntimeError(f"Lark create blocks error: {create_resp.code} {create_resp.msg}")
+
+        await asyncio.to_thread(_update)
+        logger.info("Updated Lark doc %s", doc_id)

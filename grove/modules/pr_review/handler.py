@@ -41,7 +41,11 @@ class PRReviewModule:
         related_str = ", ".join(f"#{n}" for n in related_issues) if related_issues else "无关联 Issue"
         prd_content = "未找到关联的 PRD 文档。"
         try:
-            prd_content = await self.lark.read_doc(self.config.lark.space_id)
+            prd_files = self.github.read_directory_files(repo, self.config.doc_sync.github_docs_path)
+            if prd_files:
+                prd_content = "\n\n---\n\n".join(
+                    f"# {name}\n\n{content}" for name, content in prd_files.items()
+                )
         except Exception:
             logger.debug("Could not read PRD for PR #%s", pr_number)
         review = await self.llm.chat(
@@ -49,7 +53,7 @@ class PRReviewModule:
                 pr_number=pr_number, pr_title=pr_title, related_issues=related_str,
                 diff_summary=diff_summary, prd_content=prd_content[:4000]),
             messages=[{"role": "user", "content": "请进行需求对齐分析。"}], max_tokens=1024)
-        self.github.add_pr_comment(repo, pr_number, review)
+        self.github.add_comment(repo, pr_number, review)
         logger.info("Posted alignment review on PR #%s", pr_number)
         if "⚠️" in review and "无" not in review.split("⚠️")[1][:20]:
             await self.lark.send_text(self.config.lark.chat_id,

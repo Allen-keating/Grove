@@ -8,10 +8,25 @@ from grove.core.storage import Storage
 logger = logging.getLogger(__name__)
 
 class MemberModule:
+    _TASKS_PATH = "memory/profiles/member-tasks.yml"
+
     def __init__(self, resolver: MemberResolver, storage: Storage):
         self._resolver = resolver
         self._storage = storage
         self._tasks: dict[str, list[dict]] = {m.github: [] for m in resolver.all()}
+        self._load_tasks()
+
+    def _load_tasks(self) -> None:
+        try:
+            saved = self._storage.read_yaml(self._TASKS_PATH)
+            for username, tasks in saved.items():
+                if username in self._tasks:
+                    self._tasks[username] = tasks
+        except FileNotFoundError:
+            pass
+
+    def _persist_tasks(self) -> None:
+        self._storage.write_yaml(self._TASKS_PATH, self._tasks)
 
     @subscribe(EventType.INTERNAL_TASK_ASSIGNED)
     async def on_task_assigned(self, event: Event) -> None:
@@ -23,6 +38,7 @@ class MemberModule:
             "issue_title": event.payload.get("issue_title", ""),
             "status": "assigned",
         })
+        self._persist_tasks()
         logger.info("Task #%s assigned to %s (load: %d)",
                     event.payload.get("issue_number"), username, self.get_load(username))
 

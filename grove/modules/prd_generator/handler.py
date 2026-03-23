@@ -5,6 +5,7 @@ import logging
 from grove.config import GroveConfig
 from grove.core.event_bus import EventBus, subscribe
 from grove.core.events import Event, EventType
+from grove.core.storage import Storage
 from grove.integrations.github.client import GitHubClient
 from grove.integrations.lark.client import LarkClient
 from grove.integrations.llm.client import LLMClient
@@ -17,13 +18,14 @@ logger = logging.getLogger(__name__)
 class PRDGeneratorModule:
     def __init__(self, bus: EventBus, llm: LLMClient, lark: LarkClient,
                  github: GitHubClient, config: GroveConfig,
-                 conv_manager: ConversationManager):
+                 conv_manager: ConversationManager, storage: Storage | None = None):
         self.bus = bus
         self.llm = llm
         self.lark = lark
         self.github = github
         self.config = config
         self.conv_manager = conv_manager
+        self._storage = storage
 
     @subscribe(EventType.INTERNAL_NEW_REQUIREMENT)
     async def on_new_requirement(self, event: Event) -> None:
@@ -91,6 +93,8 @@ class PRDGeneratorModule:
             max_tokens=4096,
         )
 
+        filename = conv.topic.replace(" ", "-").replace("/", "-")
+
         try:
             doc_id = await self.lark.create_doc(
                 space_id=self.config.lark.space_id,
@@ -98,12 +102,12 @@ class PRDGeneratorModule:
                 markdown_content=prd_content,
             )
             conv.prd_doc_id = doc_id
+            self._save_doc_id(f"prd-{filename}.md", doc_id)
         except Exception:
             logger.exception("Failed to create Lark doc")
             doc_id = None
 
         try:
-            filename = conv.topic.replace(" ", "-").replace("/", "-")
             github_path = f"{self.config.doc_sync.github_docs_path}prd-{filename}.md"
             self.github.write_file(self.config.project.repo, github_path, prd_content,
                                    f"docs: add PRD for {conv.topic}")
@@ -124,3 +128,14 @@ class PRDGeneratorModule:
             payload={"topic": conv.topic, "prd_doc_id": doc_id, "conversation_id": conv.id},
             member=None,
         ))
+
+    def _save_doc_id(self, filename: str, doc_id: str) -> None:
+        """Record the Lark doc_id in sync-state for doc_sync module to use."""
+        if not self._storage:
+            return
+        try:
+            sync_state = self._storage.read_yaml("docs-sync/sync-state.yml")
+        except FileNotFoundError:
+            sync_state = {"synced": [], "pending": []}
+        sync_state.setdefault("doc_ids", {})[filename] = doc_id
+        self._storage.write_yaml("docs-sync/sync-state.yml", sync_state)

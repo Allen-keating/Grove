@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from grove.core.events import Event, EventType, Member
+from grove.core.events import Member
 from grove.modules.morning_dispatch.handler import MorningDispatchModule
 
 

@@ -1,5 +1,6 @@
 # tests/test_modules/test_daily_report/test_collectors.py
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from grove.modules.daily_report.collectors import DailyDataCollector
 
@@ -40,7 +41,6 @@ class TestDailyDataCollector:
         assert data["total_commits"] == 3
 
 
-from unittest.mock import AsyncMock
 
 @pytest.mark.asyncio
 class TestDailyDataCollectorEnhanced:

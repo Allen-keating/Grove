@@ -11,14 +11,16 @@ class TestPRReviewModule:
         llm = MagicMock()
         lark = MagicMock()
         lark.send_text = AsyncMock()
-        lark.read_doc = AsyncMock(return_value="# 登录模块 PRD\n\n需要实现登录页面...")
         github = MagicMock()
         github.get_pr_diff = MagicMock(return_value="diff --git a/login.py...")
-        github.add_pr_comment = MagicMock()
+        github.add_comment = MagicMock()
+        github.read_directory_files = MagicMock(return_value={
+            "prd-登录模块.md": "# 登录模块 PRD\n\n需要实现登录页面..."
+        })
         config = MagicMock()
         config.project.repo = "org/repo"
         config.lark.chat_id = "oc_test"
-        config.lark.space_id = "spc_test"
+        config.doc_sync.github_docs_path = "docs/prd/"
         module = PRReviewModule(bus=bus, llm=llm, lark=lark, github=github, config=config)
         bus.register(module)
         return module, bus
@@ -39,7 +41,7 @@ class TestPRReviewModule:
                      member=Member(name="张三", github="zhangsan", lark_id="ou_xxx", role="frontend"))
         await bus.dispatch(event)
         mod.github.get_pr_diff.assert_called_once()
-        mod.github.add_pr_comment.assert_called_once()
+        mod.github.add_comment.assert_called_once()
 
     async def test_pr_without_diff_skips(self, module):
         mod, bus = module
@@ -48,4 +50,4 @@ class TestPRReviewModule:
                      payload={"pull_request": {"number": 99, "title": "Test", "body": ""},
                               "repository": {"full_name": "org/repo"}})
         await bus.dispatch(event)
-        mod.github.add_pr_comment.assert_not_called()
+        mod.github.add_comment.assert_not_called()

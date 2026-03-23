@@ -36,7 +36,11 @@ class DocSyncModule:
             logger.info("PR #%s: no product-level changes", pr_number)
             return
         logger.info("PR #%s: product change (%s) — %s", pr_number, classification.severity, classification.description)
-        await self._updater.apply(classification, pr_number, self.config.lark.space_id)
+        doc_id = self._resolve_doc_id()
+        if doc_id:
+            await self._updater.apply(classification, pr_number, doc_id)
+        else:
+            logger.warning("No Lark doc_id found in sync-state, skipping Lark update for PR #%s", pr_number)
         self._record_sync(pr_number, classification)
 
     @subscribe(EventType.CRON_DOC_DRIFT_CHECK)
@@ -64,6 +68,12 @@ class DocSyncModule:
             self._storage.write_yaml("docs-sync/sync-state.yml", state)
         except Exception:
             logger.exception("Failed to record sync state")
+
+    def _resolve_doc_id(self) -> str | None:
+        """Look up the first available PRD doc_id from sync-state."""
+        state = self._get_sync_state()
+        doc_ids = state.get("doc_ids", {})
+        return next(iter(doc_ids.values()), None) if doc_ids else None
 
     def _get_sync_state(self):
         try:

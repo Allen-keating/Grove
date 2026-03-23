@@ -55,3 +55,34 @@ class TestMemberModule:
         assert "zhangsan" in loads
         assert "lisi" in loads
         assert all(v == 0 for v in loads.values())
+
+    async def test_tasks_persisted_to_disk(self, module):
+        mod, bus = module
+        event = Event(
+            type=EventType.INTERNAL_TASK_ASSIGNED, source="internal",
+            payload={"github_username": "zhangsan", "issue_number": 50, "issue_title": "Persist test"},
+        )
+        await bus.dispatch(event)
+        # Create a new module from the same storage — simulates restart
+        new_mod = MemberModule(resolver=mod._resolver, storage=mod._storage)
+        assert len(new_mod.get_tasks("zhangsan")) == 1
+        assert new_mod.get_tasks("zhangsan")[0]["issue_number"] == 50
+
+    def test_load_with_no_persisted_file(self, grove_dir: Path, sample_team_yml: Path):
+        storage = Storage(grove_dir)
+        resolver = MemberResolver(storage)
+        mod = MemberModule(resolver=resolver, storage=storage)
+        assert mod.get_load("zhangsan") == 0
+        assert mod.get_tasks("zhangsan") == []
+
+    def test_removed_member_ignored(self, grove_dir: Path, sample_team_yml: Path):
+        storage = Storage(grove_dir)
+        # Write a tasks file with a member not in team.yml
+        storage.write_yaml("memory/profiles/member-tasks.yml", {
+            "zhangsan": [{"issue_number": 1, "issue_title": "Task A", "status": "assigned"}],
+            "removed_user": [{"issue_number": 2, "issue_title": "Task B", "status": "assigned"}],
+        })
+        resolver = MemberResolver(storage)
+        mod = MemberModule(resolver=resolver, storage=storage)
+        assert mod.get_load("zhangsan") == 1
+        assert "removed_user" not in mod.get_all_loads()
