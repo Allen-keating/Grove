@@ -71,3 +71,119 @@ class TestIntentParserContext:
         result = await parser.parse("去掉 #205", member, context=context)
         assert result.intent == Intent.GENERAL_CHAT
         llm.chat.assert_called_once()
+
+
+class TestRuleMatch:
+    """Test rule-based fast path — these should NOT call LLM."""
+
+    @pytest.fixture
+    def parser(self):
+        llm = AsyncMock()
+        return IntentParser(llm=llm)
+
+    @pytest.fixture
+    def member(self):
+        return Member(name="Test", github="test", lark_id="ou_test", role="backend")
+
+    async def test_toggle_disable_pr_review(self, parser, member):
+        result = await parser.parse("关闭 PR 审查", member)
+        assert result.intent == Intent.TOGGLE_MODULE
+        assert result.topic == "disable:pr_review"
+        assert result.confidence == 1.0
+        parser.llm.chat.assert_not_called()
+
+    async def test_toggle_enable_daily_report(self, parser, member):
+        result = await parser.parse("开启每日巡检", member)
+        assert result.intent == Intent.TOGGLE_MODULE
+        assert result.topic == "enable:daily_report"
+        parser.llm.chat.assert_not_called()
+
+    async def test_toggle_with_alias(self, parser, member):
+        result = await parser.parse("禁用巡检", member)
+        assert result.intent == Intent.TOGGLE_MODULE
+        assert result.topic == "disable:daily_report"
+        parser.llm.chat.assert_not_called()
+
+    async def test_toggle_unknown_module_falls_to_llm(self, parser, member):
+        parser.llm.chat.return_value = '{"intent": "general_chat", "topic": "", "confidence": 0.7}'
+        result = await parser.parse("关闭不存在的模块", member)
+        assert result.intent == Intent.GENERAL_CHAT
+        parser.llm.chat.assert_called_once()
+
+    async def test_query_module_status(self, parser, member):
+        result = await parser.parse("模块状态", member)
+        assert result.intent == Intent.QUERY_MODULE_STATUS
+        parser.llm.chat.assert_not_called()
+
+    async def test_query_module_status_variant(self, parser, member):
+        result = await parser.parse("哪些功能开着？", member)
+        assert result.intent == Intent.QUERY_MODULE_STATUS
+        parser.llm.chat.assert_not_called()
+
+    async def test_scan_project(self, parser, member):
+        result = await parser.parse("扫描项目", member)
+        assert result.intent == Intent.SCAN_PROJECT
+        parser.llm.chat.assert_not_called()
+
+    async def test_scan_project_variant(self, parser, member):
+        result = await parser.parse("帮我更新项目文档", member)
+        assert result.intent == Intent.SCAN_PROJECT
+        parser.llm.chat.assert_not_called()
+
+    async def test_project_overview(self, parser, member):
+        result = await parser.parse("项目总览", member)
+        assert result.intent == Intent.QUERY_PROJECT_OVERVIEW
+        parser.llm.chat.assert_not_called()
+
+    async def test_ambiguous_falls_to_llm(self, parser, member):
+        parser.llm.chat.return_value = '{"intent": "query_progress", "topic": "", "confidence": 0.9}'
+        result = await parser.parse("张三手上几个任务？", member)
+        assert result.intent == Intent.QUERY_PROGRESS
+        parser.llm.chat.assert_called_once()
+
+    async def test_general_chat_falls_to_llm(self, parser, member):
+        parser.llm.chat.return_value = '{"intent": "general_chat", "topic": "", "confidence": 0.8}'
+        result = await parser.parse("今天天气不错", member)
+        assert result.intent == Intent.GENERAL_CHAT
+        parser.llm.chat.assert_called_once()
+
+    # -- Negation: "不想扫描项目" should NOT match SCAN_PROJECT --
+
+    async def test_negation_skips_rules(self, parser, member):
+        parser.llm.chat.return_value = '{"intent": "general_chat", "topic": "", "confidence": 0.8}'
+        result = await parser.parse("我不想扫描项目", member)
+        assert result.intent == Intent.GENERAL_CHAT
+        parser.llm.chat.assert_called_once()
+
+    async def test_negation_bu_yao(self, parser, member):
+        parser.llm.chat.return_value = '{"intent": "general_chat", "topic": "", "confidence": 0.7}'
+        result = await parser.parse("不要关闭 PR 审查", member)
+        assert result.intent == Intent.GENERAL_CHAT
+        parser.llm.chat.assert_called_once()
+
+    async def test_negation_bie(self, parser, member):
+        parser.llm.chat.return_value = '{"intent": "general_chat", "topic": "", "confidence": 0.7}'
+        result = await parser.parse("别扫描项目了", member)
+        assert result.intent == Intent.GENERAL_CHAT
+        parser.llm.chat.assert_called_once()
+
+    # -- Inverted word order: "把 PR 审查关闭" --
+
+    async def test_toggle_inverted_order(self, parser, member):
+        result = await parser.parse("把 PR 审查关闭", member)
+        assert result.intent == Intent.TOGGLE_MODULE
+        assert result.topic == "disable:pr_review"
+        parser.llm.chat.assert_not_called()
+
+    async def test_toggle_inverted_with_prefix(self, parser, member):
+        result = await parser.parse("帮我把每日巡检开启", member)
+        assert result.intent == Intent.TOGGLE_MODULE
+        assert result.topic == "enable:daily_report"
+        parser.llm.chat.assert_not_called()
+
+    # -- LLM returns rule-only intent → clamped to UNKNOWN --
+
+    async def test_llm_returns_rule_intent_clamped(self, parser, member):
+        parser.llm.chat.return_value = '{"intent": "toggle_module", "topic": "disable:pr_review", "confidence": 0.8}'
+        result = await parser.parse("间接提到了模块开关", member)
+        assert result.intent == Intent.UNKNOWN
