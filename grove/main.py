@@ -113,6 +113,7 @@ async def lifespan(app: FastAPI):
     prd_generator = PRDGeneratorModule(
         bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
         github=app.state.github_client, config=config, conv_manager=conv_manager,
+        storage=storage,
     )
     task_breakdown = TaskBreakdownModule(
         bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
@@ -155,8 +156,7 @@ async def lifespan(app: FastAPI):
 
     # Scheduler
     scheduler = create_scheduler(
-        daily_report_time=config.schedules.daily_report,
-        doc_drift_time=config.schedules.doc_drift_check,
+        schedules=config.schedules,
         timezone=config.work_hours.timezone,
         on_event=handle_event,
     )

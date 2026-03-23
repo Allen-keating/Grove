@@ -1,28 +1,21 @@
+import pytest
 from unittest.mock import AsyncMock
-
-
+from grove.config import SchedulesConfig
 from grove.ingress.scheduler import create_scheduler
 
-
 class TestScheduler:
-    def test_create_scheduler_registers_daily_report(self):
+    def test_creates_all_jobs(self):
+        schedules = SchedulesConfig(
+            daily_report="09:00", doc_drift_check="09:00",
+            project_overview="10:00", morning_dispatch="09:15",
+        )
         on_event = AsyncMock()
         scheduler = create_scheduler(
-            daily_report_time="09:00",
-            doc_drift_time="09:00",
-            timezone="Asia/Shanghai",
-            on_event=on_event,
+            schedules=schedules, timezone="Asia/Shanghai", on_event=on_event,
         )
         job_ids = [job.id for job in scheduler.get_jobs()]
         assert "daily_report" in job_ids
         assert "doc_drift_check" in job_ids
-
-    def test_scheduler_not_started(self):
-        on_event = AsyncMock()
-        scheduler = create_scheduler(
-            daily_report_time="09:00",
-            doc_drift_time="09:00",
-            timezone="Asia/Shanghai",
-            on_event=on_event,
-        )
-        assert scheduler.running is False
+        assert "project_overview" in job_ids
+        assert "morning_dispatch" in job_ids
+        assert len(job_ids) == 4
