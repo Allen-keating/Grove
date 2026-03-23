@@ -33,7 +33,7 @@ class DailyReportModule:
     @subscribe(EventType.CRON_DAILY_REPORT)
     async def on_daily_report(self, event: Event) -> None:
         logger.info("Generating daily report...")
-        data = self._collector.collect()
+        data = await self._collector.collect_with_classification(llm=self.llm)
         risks = self._analyzer.analyze(data)
         milestone_summary = self._analyzer.get_milestone_summary(data)
         suggestions = await self._generate_suggestions(data, risks, milestone_summary)
@@ -81,6 +81,12 @@ class DailyReportModule:
         for member, count in data["commits_by_member"].items():
             status = "🟢 正常" if count > 0 else "🔴 无活动"
             lines.append(f"| @{member} | {count} | {status} |")
+        if data.get("commits_by_type"):
+            lines.append("\n## 📊 提交分布\n")
+            lines.append("| 类型 | 数量 |")
+            lines.append("|------|------|")
+            for ctype, count in data["commits_by_type"].items():
+                lines.append(f"| {ctype} | {count} |")
         lines.append("\n## ⚠️ 风险项\n")
         if risks:
             for r in risks:

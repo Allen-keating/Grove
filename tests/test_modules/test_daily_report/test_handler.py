@@ -21,6 +21,9 @@ class TestDailyReportModule:
         github.list_recent_commits = MagicMock(return_value=[
             {"sha": "abc", "message": "fix", "author": "zhangsan", "date": "2026-03-21T10:00:00"},
         ])
+        github.list_recent_commits_detailed = MagicMock(return_value=[
+            {"sha": "abc", "message": "fix: login", "author": "zhangsan", "date": "2026-03-21T10:00:00", "files": []},
+        ])
         github.list_open_prs = MagicMock(return_value=[])
         github.list_issues = MagicMock(return_value=[])
         github.list_milestones = MagicMock(return_value=[])

@@ -38,3 +38,45 @@ class TestDailyDataCollector:
     def test_collect_total_commits(self, collector):
         data = collector.collect()
         assert data["total_commits"] == 3
+
+
+from unittest.mock import AsyncMock
+
+@pytest.mark.asyncio
+class TestDailyDataCollectorEnhanced:
+    async def test_collect_with_classification(self):
+        github = MagicMock()
+        github.list_recent_commits.return_value = [
+            {"sha": "abc1234", "message": "feat: add login", "author": "zhangsan", "date": "2026-03-21T10:00:00"},
+            {"sha": "def5678", "message": "fix: null check", "author": "lisi", "date": "2026-03-21T11:00:00"},
+            {"sha": "ghi9012", "message": "docs: update readme", "author": "lisi", "date": "2026-03-21T12:00:00"},
+        ]
+        github.list_recent_commits_detailed.return_value = [
+            {"sha": "abc1234", "message": "feat: add login", "author": "zhangsan", "date": "2026-03-21T10:00:00", "files": [{"filename": "login.py", "status": "added", "additions": 50, "deletions": 0}]},
+            {"sha": "def5678", "message": "fix: null check", "author": "lisi", "date": "2026-03-21T11:00:00", "files": [{"filename": "api.py", "status": "modified", "additions": 2, "deletions": 1}]},
+            {"sha": "ghi9012", "message": "docs: update readme", "author": "lisi", "date": "2026-03-21T12:00:00", "files": [{"filename": "README.md", "status": "modified", "additions": 5, "deletions": 2}]},
+        ]
+        github.list_open_prs.return_value = []
+        github.list_issues.return_value = []
+        github.list_milestones.return_value = []
+        collector = DailyDataCollector(github=github, repo="org/repo")
+        llm = AsyncMock()
+        data = await collector.collect_with_classification(llm=llm)
+        assert data["commits_by_type"]["feature"] == 1
+        assert data["commits_by_type"]["bugfix"] == 1
+        assert data["commits_by_type"]["docs"] == 1
+        assert len(data["commit_details"]) == 3
+        # LLM should NOT have been called (all conventional commits)
+        llm.chat.assert_not_called()
+
+    async def test_collect_with_classification_empty(self):
+        github = MagicMock()
+        github.list_recent_commits.return_value = []
+        github.list_recent_commits_detailed.return_value = []
+        github.list_open_prs.return_value = []
+        github.list_issues.return_value = []
+        github.list_milestones.return_value = []
+        collector = DailyDataCollector(github=github, repo="org/repo")
+        data = await collector.collect_with_classification()
+        assert data["commits_by_type"] == {}
+        assert data["commit_details"] == []
