@@ -31,10 +31,13 @@ class EventBus:
 
     def __init__(self, failed_events_path: Path | None = None):
         self._handlers: dict[str, list[Callable]] = defaultdict(list)
+        self._module_handlers: dict[str, list[tuple[str, Callable]]] = {}
         self._failed_events_path = failed_events_path
 
-    def register(self, module: Any) -> None:
+    def register(self, module: Any, name: str | None = None) -> None:
         """Scan a module instance for @subscribe-decorated methods and register them."""
+        module_name = name or type(module).__name__
+        registered: list[tuple[str, Callable]] = []
         for attr_name in dir(module):
             method = getattr(module, attr_name, None)
             if method is None or not callable(method):
@@ -43,12 +46,31 @@ class EventBus:
             if event_types:
                 for event_type in event_types:
                     self._handlers[event_type].append(method)
+                    registered.append((event_type, method))
                     logger.info(
                         "Registered %s.%s for event '%s'",
-                        type(module).__name__,
+                        module_name,
                         attr_name,
                         event_type,
                     )
+        self._module_handlers[module_name] = registered
+
+    def unregister(self, name: str) -> bool:
+        """Remove all handlers registered under the given module name.
+
+        Returns True if the module was found and removed, False otherwise.
+        """
+        registered = self._module_handlers.pop(name, None)
+        if registered is None:
+            return False
+        for event_type, method in registered:
+            handlers = self._handlers.get(event_type)
+            if handlers is not None:
+                try:
+                    handlers.remove(method)
+                except ValueError:
+                    pass
+        return True
 
     def _log_failed_event(self, event: Event, handler_name: str, error: str) -> None:
         """Append failed event to .grove/logs/failed-events.jsonl."""

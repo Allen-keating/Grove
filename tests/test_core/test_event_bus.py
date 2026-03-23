@@ -139,3 +139,57 @@ class TestEventBus:
         )
 
         assert received == ["新需求"]
+
+
+class TestEventBusUnregister:
+    @pytest.fixture
+    def bus(self):
+        return EventBus()
+
+    async def test_register_with_name(self, bus):
+        class Mod:
+            @subscribe(EventType.PR_OPENED)
+            async def handle(self, event): pass
+        bus.register(Mod(), name="test_mod")
+        assert "test_mod" in bus._module_handlers
+
+    async def test_unregister_removes_handlers(self, bus):
+        received = []
+        class Mod:
+            @subscribe(EventType.PR_OPENED)
+            async def handle(self, event):
+                received.append(event)
+        bus.register(Mod(), name="my_mod")
+        bus.unregister("my_mod")
+        await bus.dispatch(Event(type=EventType.PR_OPENED, source="github", payload={}))
+        assert len(received) == 0
+
+    async def test_unregister_unknown_returns_false(self, bus):
+        assert bus.unregister("nonexistent") is False
+
+    async def test_unregister_returns_true(self, bus):
+        class Mod:
+            @subscribe(EventType.PR_OPENED)
+            async def handle(self, event): pass
+        bus.register(Mod(), name="my_mod")
+        assert bus.unregister("my_mod") is True
+
+    async def test_register_without_name_uses_classname(self, bus):
+        class MyModule:
+            @subscribe(EventType.PR_OPENED)
+            async def handle(self, event): pass
+        bus.register(MyModule())
+        assert "MyModule" in bus._module_handlers
+
+    async def test_re_register_after_unregister(self, bus):
+        received = []
+        class Mod:
+            @subscribe(EventType.PR_OPENED)
+            async def handle(self, event):
+                received.append(event)
+        mod = Mod()
+        bus.register(mod, name="my_mod")
+        bus.unregister("my_mod")
+        bus.register(mod, name="my_mod")
+        await bus.dispatch(Event(type=EventType.PR_OPENED, source="github", payload={}))
+        assert len(received) == 1
