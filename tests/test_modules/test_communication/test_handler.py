@@ -15,7 +15,7 @@ class TestCommunicationModule:
         llm = MagicMock()
         lark = MagicMock()
         lark.send_text = AsyncMock()
-        github = MagicMock()
+        github = AsyncMock()
         config = MagicMock()
         config.lark.chat_id = "oc_test"
         config.project.repo = "org/repo"
@@ -77,7 +77,7 @@ class TestCommunicationToggle:
         llm = MagicMock()
         lark = MagicMock()
         lark.send_text = AsyncMock()
-        github = MagicMock()
+        github = AsyncMock()
         config = MagicMock()
         config.lark.chat_id = "oc_test"
         storage = Storage(grove_dir)
@@ -126,7 +126,7 @@ class TestCommunicationNewIntents:
         llm = AsyncMock()
         llm.chat.return_value = '{"intent": "scan_project", "topic": "", "confidence": 0.9}'
         lark = AsyncMock()
-        github = MagicMock()
+        github = AsyncMock()
         config = MagicMock()
         config.lark.chat_id = "oc_test"
         storage = MagicMock()

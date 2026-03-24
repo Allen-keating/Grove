@@ -11,7 +11,7 @@ def dispatch_module():
     llm = AsyncMock()
     llm.chat.return_value = '{"tasks": [{"issue_number": 1, "title": "Task 1", "reason": "P0"}], "summary": "Do task 1"}'
     lark = AsyncMock()
-    github = MagicMock()
+    github = AsyncMock()
     from grove.integrations.github.models import IssueData
     github.list_issues.return_value = [
         IssueData(number=1, title="Task 1", body="", state="open", labels=["P0"], assignees=[]),

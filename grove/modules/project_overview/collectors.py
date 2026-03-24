@@ -14,19 +14,19 @@ class OverviewDataCollector:
         self.repo = repo
         self._storage = storage
 
-    def collect(self) -> dict:
-        all_issues = self.github.list_issues(self.repo, state="all")
+    async def collect(self) -> dict:
+        all_issues = await self.github.list_issues(self.repo, state="all")
         open_issues = [i for i in all_issues if i.state == "open"]
         closed_issues = [i for i in all_issues if i.state == "closed"]
         total = len(all_issues)
         completion_rate = round(len(closed_issues) / total * 100) if total > 0 else 0
 
         since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        recent_commits = self.github.list_recent_commits_detailed(
+        recent_commits = await self.github.list_recent_commits_detailed(
             self.repo, since=since_7d, max_commits=200)
 
-        open_prs = self.github.list_open_prs(self.repo)
-        milestones = self.github.list_milestones(self.repo)
+        open_prs = await self.github.list_open_prs(self.repo)
+        milestones = await self.github.list_milestones(self.repo)
 
         return {
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -54,8 +54,13 @@ class OverviewDataCollector:
         if not snapshots:
             return {"closed_issues": 0, "merged_prs": 0, "new_issues": 0}
         total_commits = sum(s.get("total_commits", 0) for s in snapshots)
+        if len(snapshots) >= 2:
+            closed_delta = snapshots[0].get("closed_issues", 0) - snapshots[-1].get("closed_issues", 0)
+            open_delta = snapshots[0].get("open_issues_count", 0) - snapshots[-1].get("open_issues_count", 0)
+        else:
+            closed_delta, open_delta = 0, 0
         return {
-            "closed_issues": total_commits,
-            "merged_prs": len(snapshots),
-            "new_issues": 0,
+            "closed_issues": max(closed_delta, 0),
+            "merged_prs": total_commits,
+            "new_issues": max(open_delta, 0),
         }

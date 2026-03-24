@@ -75,6 +75,38 @@ class TestMemberModule:
         assert mod.get_load("zhangsan") == 0
         assert mod.get_tasks("zhangsan") == []
 
+    async def test_issue_closed_marks_task_completed(self, module):
+        mod, bus = module
+        # Assign a task
+        await bus.dispatch(Event(
+            type=EventType.INTERNAL_TASK_ASSIGNED, source="internal",
+            payload={"github_username": "zhangsan", "issue_number": 10, "issue_title": "Task X"},
+        ))
+        assert mod.get_load("zhangsan") == 1
+        # Close the issue
+        await bus.dispatch(Event(
+            type=EventType.ISSUE_UPDATED, source="github",
+            payload={"action": "closed", "issue": {"number": 10}},
+        ))
+        assert mod.get_load("zhangsan") == 0
+        # Task still exists but marked completed
+        tasks = mod.get_tasks("zhangsan")
+        assert len(tasks) == 1
+        assert tasks[0]["status"] == "completed"
+
+    async def test_issue_closed_unrelated_no_effect(self, module):
+        mod, bus = module
+        await bus.dispatch(Event(
+            type=EventType.INTERNAL_TASK_ASSIGNED, source="internal",
+            payload={"github_username": "zhangsan", "issue_number": 10, "issue_title": "Task X"},
+        ))
+        # Close a different issue
+        await bus.dispatch(Event(
+            type=EventType.ISSUE_UPDATED, source="github",
+            payload={"action": "closed", "issue": {"number": 999}},
+        ))
+        assert mod.get_load("zhangsan") == 1
+
     def test_removed_member_ignored(self, grove_dir: Path, sample_team_yml: Path):
         storage = Storage(grove_dir)
         # Write a tasks file with a member not in team.yml

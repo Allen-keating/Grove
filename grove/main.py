@@ -19,6 +19,7 @@ from grove.ingress.health import HealthState, create_health_router
 from grove.ingress.lark_webhook import create_lark_webhook_router
 from grove.ingress.lark_websocket import create_lark_ws_client
 from grove.ingress.scheduler import create_scheduler
+from grove.integrations.github.async_client import AsyncGitHubClient
 from grove.integrations.github.client import GitHubClient
 from grove.integrations.lark.client import LarkClient
 from grove.integrations.llm.client import LLMClient
@@ -86,11 +87,12 @@ async def lifespan(app: FastAPI):
     app.state.member_resolver = resolver
     logger.info("Loaded %d team members", len(resolver.members))
 
-    app.state.github_client = GitHubClient(
+    sync_github = GitHubClient(
         app_id=config.github.app_id,
         private_key_path=config.github.private_key_path,
         installation_id=config.github.installation_id,
     )
+    app.state.github_client = AsyncGitHubClient(sync_github)
     app.state.lark_client = LarkClient(
         app_id=config.lark.app_id, app_secret=config.lark.app_secret,
     )
@@ -123,7 +125,7 @@ async def lifespan(app: FastAPI):
     task_breakdown = TaskBreakdownModule(
         bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
         github=app.state.github_client, config=config,
-        member_module=member_module, resolver=resolver,
+        member_module=member_module, resolver=resolver, storage=storage,
     )
     daily_report = DailyReportModule(
         bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
@@ -178,7 +180,9 @@ async def lifespan(app: FastAPI):
     app.include_router(create_github_webhook_router(
         webhook_secret=config.github.webhook_secret, on_event=handle_event,
     ))
-    app.include_router(create_lark_webhook_router(on_event=handle_event))
+    app.include_router(create_lark_webhook_router(
+        on_event=handle_event, verification_token=config.lark.verification_token,
+    ))
 
     # Scheduler
     scheduler = create_scheduler(

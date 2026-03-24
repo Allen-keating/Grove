@@ -11,12 +11,12 @@ class TestPRReviewModule:
         llm = MagicMock()
         lark = MagicMock()
         lark.send_text = AsyncMock()
-        github = MagicMock()
-        github.get_pr_diff = MagicMock(return_value="diff --git a/login.py...")
-        github.add_comment = MagicMock()
-        github.read_directory_files = MagicMock(return_value={
+        github = AsyncMock()
+        github.get_pr_diff.return_value = "diff --git a/login.py..."
+        github.add_comment.return_value = None
+        github.read_directory_files.return_value = {
             "prd-登录模块.md": "# 登录模块 PRD\n\n需要实现登录页面..."
-        })
+        }
         config = MagicMock()
         config.project.repo = "org/repo"
         config.lark.chat_id = "oc_test"
@@ -45,7 +45,7 @@ class TestPRReviewModule:
 
     async def test_pr_without_diff_skips(self, module):
         mod, bus = module
-        mod.github.get_pr_diff = MagicMock(side_effect=Exception("API error"))
+        mod.github.get_pr_diff = AsyncMock(side_effect=Exception("API error"))
         event = Event(type=EventType.PR_OPENED, source="github",
                      payload={"pull_request": {"number": 99, "title": "Test", "body": ""},
                               "repository": {"full_name": "org/repo"}})

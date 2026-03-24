@@ -109,8 +109,8 @@ class PRDGeneratorModule:
 
         try:
             github_path = f"{self.config.doc_sync.github_docs_path}prd-{filename}.md"
-            self.github.write_file(self.config.project.repo, github_path, prd_content,
-                                   f"docs: add PRD for {conv.topic}")
+            await self.github.write_file(self.config.project.repo, github_path, prd_content,
+                                         f"docs: add PRD for {conv.topic}")
         except Exception:
             logger.exception("Failed to sync PRD to GitHub")
 

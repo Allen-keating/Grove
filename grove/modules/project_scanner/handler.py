@@ -66,14 +66,14 @@ class ProjectScannerModule:
         is_cold_start = not self._is_baseline_confirmed()
 
         # Data collection
-        tree = self.github.get_repo_tree(repo)
-        readme = self._safe_read_file(repo, "README.md")
-        deps = self._collect_dependencies(repo)
-        source_snippets = self._read_key_sources(repo, tree)
+        tree = await self.github.get_repo_tree(repo)
+        readme = await self._safe_read_file(repo, "README.md")
+        deps = await self._collect_dependencies(repo)
+        source_snippets = await self._read_key_sources(repo, tree)
         since = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
-        commits = self.github.list_recent_commits_detailed(repo, since=since, max_commits=500)
-        milestones = self.github.list_milestones(repo)
-        open_prs = self.github.list_open_prs(repo)
+        commits = await self.github.list_recent_commits_detailed(repo, since=since, max_commits=500)
+        milestones = await self.github.list_milestones(repo)
+        open_prs = await self.github.list_open_prs(repo)
 
         if not tree and not commits:
             await self.lark.send_text(chat_id,
@@ -136,7 +136,7 @@ class ProjectScannerModule:
         })
 
         # Migration: clean up old files
-        self._migrate_old_files(repo)
+        await self._migrate_old_files(repo)
 
         if is_cold_start:
             from grove.integrations.lark.cards import build_notification_card
@@ -178,7 +178,7 @@ class ProjectScannerModule:
             logger.exception("Lark baseline doc failed")
 
         try:
-            self.github.write_file(repo, "docs/project-baseline.md", content,
+            await self.github.write_file(repo, "docs/project-baseline.md", content,
                                    "docs: update project baseline")
         except Exception:
             logger.exception("GitHub baseline write failed")
@@ -202,11 +202,11 @@ class ProjectScannerModule:
         except FileNotFoundError:
             return False
 
-    def _migrate_old_files(self, repo: str) -> None:
+    async def _migrate_old_files(self, repo: str) -> None:
         for old_path in ["docs/prd/project-prd-draft.md", "docs/development-status.md"]:
             try:
-                self.github.read_file(repo, old_path)
-                self.github.write_file(repo, old_path,
+                await self.github.read_file(repo, old_path)
+                await self.github.write_file(repo, old_path,
                     "本文档已合并到 docs/project-baseline.md，请查看新文档。",
                     f"docs: deprecate {old_path} in favor of project-baseline.md")
             except Exception:
@@ -217,7 +217,7 @@ class ProjectScannerModule:
         if old_storage.exists() and not new_storage.exists():
             old_storage.rename(new_storage)
 
-    def _read_key_sources(self, repo: str, tree: list[dict]) -> str:
+    async def _read_key_sources(self, repo: str, tree: list[dict]) -> str:
         candidates = []
         for item in tree:
             if item["type"] != "blob" or item.get("size", 0) > _MAX_FILE_SIZE:
@@ -234,22 +234,22 @@ class ProjectScannerModule:
         snippets = []
         for path in candidates[:_MAX_KEY_FILES]:
             try:
-                content = self.github.read_file_head(repo, path, max_lines=100)
+                content = await self.github.read_file_head(repo, path, max_lines=100)
                 snippets.append(f"=== {path} ===\n{content}")
             except Exception:
                 continue
         return "\n\n".join(snippets)
 
-    def _safe_read_file(self, repo: str, path: str) -> str:
+    async def _safe_read_file(self, repo: str, path: str) -> str:
         try:
-            return self.github.read_file(repo, path)
+            return await self.github.read_file(repo, path)
         except Exception:
             return ""
 
-    def _collect_dependencies(self, repo: str) -> str:
+    async def _collect_dependencies(self, repo: str) -> str:
         parts = []
         for dep_file in ["requirements.txt", "package.json", "go.mod", "Cargo.toml"]:
-            content = self._safe_read_file(repo, dep_file)
+            content = await self._safe_read_file(repo, dep_file)
             if content:
                 parts.append(f"=== {dep_file} ===\n{content[:1000]}")
         return "\n\n".join(parts) if parts else "No dependency files found."

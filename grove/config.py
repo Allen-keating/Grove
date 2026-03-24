@@ -20,6 +20,7 @@ class LarkConfig(BaseModel):
     app_secret: str
     chat_id: str
     space_id: str
+    verification_token: str = ""
 
 
 class GitHubConfig(BaseModel):
@@ -37,15 +38,15 @@ class LLMConfig(BaseModel):
 class PersonaConfig(BaseModel):
     name: str = "Grove"
     tone: str = "专业但不刻板"
-    reminder_intensity: int = 3
-    proactive_messaging: bool = True
+    reminder_intensity: int = 3  # TODO: wire to notification frequency logic
+    proactive_messaging: bool = True  # TODO: wire to proactive message gating
 
 
 class WorkHoursConfig(BaseModel):
-    start: str = "09:00"
+    start: str = "09:00"  # TODO: gate scheduled actions to work hours
     end: str = "18:00"
     timezone: str = "Asia/Shanghai"
-    workdays: list[int] = [1, 2, 3, 4, 5]
+    workdays: list[int] = [1, 2, 3, 4, 5]  # TODO: gate scheduled actions to workdays
 
 
 class SchedulesConfig(BaseModel):

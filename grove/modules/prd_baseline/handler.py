@@ -52,7 +52,7 @@ class PRDBaselineModule:
         summary = topic
         if github_path:
             try:
-                content = self.github.read_file(self.config.project.repo, github_path)
+                content = await self.github.read_file(self.config.project.repo, github_path)
                 for line in content.split("\n"):
                     stripped = line.strip()
                     if stripped and not stripped.startswith("#") and not stripped.startswith(">"):
@@ -86,7 +86,7 @@ class PRDBaselineModule:
 
         # Get PR commits
         try:
-            commits = self.github.get_pr_commits(repo, pr_number)
+            commits = await self.github.get_pr_commits(repo, pr_number)
         except Exception:
             logger.warning("Failed to get commits for PR #%s", pr_number)
             return
@@ -189,7 +189,7 @@ class PRDBaselineModule:
         chat_id = event.payload.get("chat_id", self.config.lark.chat_id)
         await self.lark.send_text(chat_id, "正在整理基线文档...")
 
-        baseline = self._read_baseline_from_github()
+        baseline = await self._read_baseline_from_github()
         if not baseline:
             await self.lark.send_text(chat_id, "未找到基线文档，请先运行「扫描项目」。")
             return
@@ -219,7 +219,7 @@ class PRDBaselineModule:
         self._save_tracking(tracking)
 
         # Sync
-        self._write_baseline_to_github(new_content)
+        await self._write_baseline_to_github(new_content)
         await self._update_lark_doc(new_content)
         await self.lark.send_text(chat_id, "基线文档已整理完成。")
 
@@ -259,15 +259,15 @@ class PRDBaselineModule:
         features[name]["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         self._save_tracking(tracking)
 
-    def _read_baseline_from_github(self) -> str | None:
+    async def _read_baseline_from_github(self) -> str | None:
         try:
-            return self.github.read_file(self.config.project.repo, "docs/project-baseline.md")
+            return await self.github.read_file(self.config.project.repo, "docs/project-baseline.md")
         except Exception:
             return None
 
-    def _write_baseline_to_github(self, content: str) -> None:
+    async def _write_baseline_to_github(self, content: str) -> None:
         try:
-            self.github.write_file(
+            await self.github.write_file(
                 self.config.project.repo, "docs/project-baseline.md",
                 content, "docs: update project baseline",
             )
@@ -285,7 +285,7 @@ class PRDBaselineModule:
 
     async def _sync_baseline(self) -> None:
         """Regenerate baseline Markdown from tracking data and sync."""
-        baseline = self._read_baseline_from_github()
+        baseline = await self._read_baseline_from_github()
         if not baseline:
             return
         tracking = self._load_tracking()
@@ -305,5 +305,5 @@ class PRDBaselineModule:
                 )
                 baseline = append_feature(baseline, section, entry)
 
-        self._write_baseline_to_github(baseline)
+        await self._write_baseline_to_github(baseline)
         await self._update_lark_doc(baseline)

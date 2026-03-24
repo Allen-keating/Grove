@@ -1,5 +1,6 @@
 # tests/test_integrations/test_github_client.py
-from unittest.mock import MagicMock
+import time
+from unittest.mock import MagicMock, patch
 
 from grove.integrations.github.client import GitHubClient
 from grove.integrations.github.models import IssueData
@@ -29,9 +30,42 @@ class TestGitHubClient:
 
 
 
+class TestGitHubTokenRefresh:
+    def test_token_refreshed_when_expired(self):
+        client = GitHubClient(app_id="1", private_key_path="/tmp/fake.pem", installation_id="2")
+        # Simulate an existing but expired token
+        old_gh = MagicMock()
+        client._github = old_gh
+        client._token_expires_at = 0  # expired
+
+        mock_access = MagicMock()
+        mock_access.token = "new_token"
+        mock_integration = MagicMock()
+        mock_integration.get_access_token.return_value = mock_access
+
+        with patch("grove.integrations.github.client.GithubIntegration", return_value=mock_integration), \
+             patch("builtins.open", MagicMock()):
+            gh = client._get_github()
+
+        assert gh is not old_gh
+        assert client._token == "new_token"
+        assert client._token_expires_at > time.time()
+
+    def test_token_reused_when_valid(self):
+        client = GitHubClient(app_id="1", private_key_path="/tmp/fake.pem", installation_id="2")
+        cached_gh = MagicMock()
+        client._github = cached_gh
+        client._token_expires_at = time.time() + 9999
+
+        gh = client._get_github()
+        assert gh is cached_gh
+
+
 class TestGitHubClientNewMethods:
     def _make_client(self):
-        return GitHubClient(app_id="1", private_key_path="/tmp/fake.pem", installation_id="2")
+        client = GitHubClient(app_id="1", private_key_path="/tmp/fake.pem", installation_id="2")
+        client._token_expires_at = time.time() + 9999
+        return client
 
     def test_get_repo_tree(self):
         client = self._make_client()
@@ -129,7 +163,9 @@ class TestGitHubClientNewMethods:
 
 class TestGitHubClientBaselineMethods:
     def _make_client(self):
-        return GitHubClient(app_id="1", private_key_path="/tmp/fake.pem", installation_id="2")
+        client = GitHubClient(app_id="1", private_key_path="/tmp/fake.pem", installation_id="2")
+        client._token_expires_at = time.time() + 9999
+        return client
 
     def test_read_file_head_truncates(self):
         client = self._make_client()

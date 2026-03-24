@@ -17,7 +17,7 @@ class TestPRDGeneratorModule:
         lark = MagicMock()
         lark.send_text = AsyncMock()
         lark.create_doc = AsyncMock(return_value="doc_test_123")
-        github = MagicMock()
+        github = AsyncMock()
         storage = Storage(grove_dir)
         config = MagicMock()
         config.lark.space_id = "spc_test"

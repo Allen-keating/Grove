@@ -14,6 +14,15 @@ from grove.modules.communication.prompts import RESPONSE_PROMPT
 
 logger = logging.getLogger(__name__)
 
+_MODULE_DISPLAY = {
+    "communication": "交互沟通", "prd_generator": "PRD 生成",
+    "task_breakdown": "任务拆解", "daily_report": "每日巡检",
+    "pr_review": "PR 审查", "doc_sync": "文档同步", "member": "成员管理",
+    "project_scanner": "项目扫描", "project_overview": "项目总览",
+    "morning_dispatch": "每日任务", "prd_baseline": "PRD 基线",
+}
+
+
 class CommunicationModule:
     def __init__(self, bus: EventBus, llm: LLMClient, lark: LarkClient,
                  github: GitHubClient, config: GroveConfig, registry=None, storage: Storage | None = None):
@@ -139,14 +148,7 @@ class CommunicationModule:
         if module_name not in self.registry.names:
             await self.lark.send_text(chat_id, f"未知模块：{module_name}")
             return
-        MODULE_DISPLAY = {
-            "communication": "交互沟通", "prd_generator": "PRD 生成",
-            "task_breakdown": "任务拆解", "daily_report": "每日巡检",
-            "pr_review": "PR 审查", "doc_sync": "文档同步", "member": "成员管理",
-            "project_scanner": "项目扫描", "project_overview": "项目总览",
-            "morning_dispatch": "每日任务", "prd_baseline": "PRD 基线",
-        }
-        display = MODULE_DISPLAY.get(module_name, module_name)
+        display = _MODULE_DISPLAY.get(module_name, module_name)
         if action == "enable":
             changed = await self.registry.enable(module_name)
             msg = f"已开启「{display}」模块。" if changed else f"「{display}」模块已经是开启状态。"
@@ -161,17 +163,10 @@ class CommunicationModule:
         if self.registry is None:
             await self.lark.send_text(chat_id, "模块管理功能未启用。")
             return
-        MODULE_DISPLAY = {
-            "communication": "交互沟通", "prd_generator": "PRD 生成",
-            "task_breakdown": "任务拆解", "daily_report": "每日巡检",
-            "pr_review": "PR 审查", "doc_sync": "文档同步", "member": "成员管理",
-            "project_scanner": "项目扫描", "project_overview": "项目总览",
-            "morning_dispatch": "每日任务", "prd_baseline": "PRD 基线",
-        }
         status = self.registry.get_status()
         lines = ["📋 **模块状态**\n"]
         for m in status:
             icon = "🟢" if m["enabled"] else "🔴"
-            display = MODULE_DISPLAY.get(m["name"], m["name"])
+            display = _MODULE_DISPLAY.get(m["name"], m["name"])
             lines.append(f"{icon} {display}")
         await self.lark.send_text(chat_id, "\n".join(lines))

@@ -18,6 +18,7 @@ def grove_dir(tmp_path: Path) -> Path:
     (grove / "docs-sync").mkdir()
     (grove / "memory" / "dispatch").mkdir()
     (grove / "memory" / "project-scan").mkdir()
+    (grove / "memory" / "task-breakdown").mkdir()
     (grove / "runtime").mkdir()
     return grove
 

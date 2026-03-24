@@ -42,11 +42,27 @@ class MemberModule:
         logger.info("Task #%s assigned to %s (load: %d)",
                     event.payload.get("issue_number"), username, self.get_load(username))
 
+    @subscribe(EventType.ISSUE_UPDATED)
+    async def on_issue_updated(self, event: Event) -> None:
+        if event.payload.get("action") != "closed":
+            return
+        issue_number = event.payload.get("issue", {}).get("number")
+        if issue_number is None:
+            return
+        for username, tasks in self._tasks.items():
+            for task in tasks:
+                if task.get("issue_number") == issue_number and task.get("status") != "completed":
+                    task["status"] = "completed"
+                    self._persist_tasks()
+                    logger.info("Task #%s marked completed for %s", issue_number, username)
+                    return
+
     def get_tasks(self, github_username: str) -> list[dict]:
         return list(self._tasks.get(github_username, []))
 
     def get_load(self, github_username: str) -> int:
-        return len(self._tasks.get(github_username, []))
+        tasks = self._tasks.get(github_username, [])
+        return sum(1 for t in tasks if t.get("status") != "completed")
 
     def get_all_loads(self) -> dict[str, int]:
         return {username: len(tasks) for username, tasks in self._tasks.items()}

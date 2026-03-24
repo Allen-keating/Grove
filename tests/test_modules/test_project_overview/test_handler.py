@@ -10,7 +10,7 @@ def overview_module():
     llm = AsyncMock()
     llm.chat.return_value = '{"health": "🟢 正常", "risks": [], "suggestions": "继续保持"}'
     lark = AsyncMock()
-    github = MagicMock()
+    github = AsyncMock()
     github.list_issues.return_value = []
     github.list_recent_commits_detailed.return_value = []
     github.list_open_prs.return_value = []

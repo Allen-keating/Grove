@@ -20,7 +20,7 @@ class TestTaskBreakdownModule:
         lark.send_text = AsyncMock()
         lark.send_card = AsyncMock()
         lark.read_doc = AsyncMock(return_value="# PRD Content")
-        github = MagicMock()
+        github = AsyncMock()
         storage = Storage(grove_dir)
         resolver = MemberResolver(storage)
         member_module = MemberModule(resolver=resolver, storage=storage)
@@ -43,7 +43,7 @@ class TestTaskBreakdownModule:
                           estimated_days=2, required_skills=["react"]),
         ])
         from grove.integrations.github.models import IssueData
-        mod.github.create_issue = MagicMock(return_value=IssueData(
+        mod.github.create_issue = AsyncMock(return_value=IssueData(
             number=42, title="Task A", body="desc", labels=["frontend", "P0"]))
 
         event = Event(type=EventType.INTERNAL_PRD_FINALIZED, source="internal",
@@ -54,7 +54,7 @@ class TestTaskBreakdownModule:
 
     async def test_card_action_accept_assigns_issue(self, module):
         mod, bus = module
-        mod.github.update_issue = MagicMock()
+        mod.github.update_issue = AsyncMock()
         mod._pending_assignments[42] = {
             "assignee_github": "zhangsan", "task_title": "Task A",
         }

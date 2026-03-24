@@ -14,7 +14,7 @@ You onboard Grove the same way you onboard a human teammate: give it access, int
 
 ## Features
 
-Grove ships with 7 modules, all communicating through an internal event bus:
+Grove ships with 11 modules, all communicating through an internal event bus:
 
 | Module | What it does |
 |---|---|
@@ -23,8 +23,12 @@ Grove ships with 7 modules, all communicating through an internal event bus:
 | **Daily Report** | Collects commit/PR/milestone data each morning, runs risk analysis, posts standup to Lark and GitHub |
 | **PR Review** | Classifies each merged PR against product requirements and flags misaligned changes |
 | **Doc Sync** | Detects documentation drift after merges and rewrites stale Lark Docs sections automatically |
-| **Communication** | Routes natural-language messages in Lark to the right module via LLM intent parsing |
-| **Member Management** | Maintains a live roster of team members with GitHub/Lark IDs, skills, and workload |
+| **Communication** | Routes natural-language messages in Lark to the right module via hybrid rule-based + LLM intent parsing |
+| **Member Management** | Maintains a live roster of team members with GitHub/Lark IDs, skills, and workload tracking |
+| **Project Scanner** | Scans repository structure, commits, and dependencies to generate a unified project baseline document |
+| **Project Overview** | Generates management-level project status reports with health scoring, milestone tracking, and 7-day trends |
+| **Morning Dispatch** | Distributes personalized daily task plans to team members with interactive negotiation flow |
+| **PRD Baseline** | Manages the project baseline lifecycle, auto-tracking feature status as PRDs are finalized and PRs are merged |
 
 ---
 
@@ -123,17 +127,19 @@ work_hours:
 ### `.grove/team.yml`
 
 ```yaml
-members:
-  - github_id: "alice"
+team:
+  - github: "alice"
     lark_id: "ou_xxxx"
     name: "Alice"
-    role: "engineer"
-    skills: ["backend", "api"]
-  - github_id: "bob"
+    role: "backend"
+    skills: ["python", "fastapi", "postgresql"]
+    authority: "member"
+  - github: "bob"
     lark_id: "ou_yyyy"
     name: "Bob"
-    role: "lead"
-    skills: ["frontend", "ux"]
+    role: "frontend"
+    skills: ["react", "typescript"]
+    authority: "owner"
 ```
 
 ---
@@ -153,8 +159,9 @@ Grove is structured in five layers:
 └────────────────────┬────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────┐
-│  Modules                                    │
+│  Modules (11)                                │
 │  PRD · Tasks · Report · PR · Docs · Comms  │
+│  Scanner · Overview · Dispatch · Baseline  │
 └────────────────────┬────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────┐

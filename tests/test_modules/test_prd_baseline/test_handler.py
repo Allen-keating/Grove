@@ -9,7 +9,7 @@ def baseline_module():
     bus.dispatch = AsyncMock()
     llm = AsyncMock()
     lark = AsyncMock()
-    github = MagicMock()
+    github = AsyncMock()
     config = MagicMock()
     config.project.repo = "org/repo"
     config.lark.chat_id = "oc_test"

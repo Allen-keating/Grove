@@ -9,7 +9,7 @@ def scanner_module():
     bus.dispatch = AsyncMock()
     llm = AsyncMock()
     lark = AsyncMock()
-    github = MagicMock()
+    github = AsyncMock()
     config = MagicMock()
     config.project.repo = "org/repo"
     config.project.name = "TestProject"

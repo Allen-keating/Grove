@@ -17,17 +17,17 @@ class TestDailyReportModule:
         lark = MagicMock()
         lark.send_card = AsyncMock()
         lark.send_text = AsyncMock()
-        github = MagicMock()
-        github.list_recent_commits = MagicMock(return_value=[
+        github = AsyncMock()
+        github.list_recent_commits.return_value = [
             {"sha": "abc", "message": "fix", "author": "zhangsan", "date": "2026-03-21T10:00:00"},
-        ])
-        github.list_recent_commits_detailed = MagicMock(return_value=[
+        ]
+        github.list_recent_commits_detailed.return_value = [
             {"sha": "abc", "message": "fix: login", "author": "zhangsan", "date": "2026-03-21T10:00:00", "files": []},
-        ])
-        github.list_open_prs = MagicMock(return_value=[])
-        github.list_issues = MagicMock(return_value=[])
-        github.list_milestones = MagicMock(return_value=[])
-        github.create_issue = MagicMock(return_value=MagicMock(number=100))
+        ]
+        github.list_open_prs.return_value = []
+        github.list_issues.return_value = []
+        github.list_milestones.return_value = []
+        github.create_issue.return_value = MagicMock(number=100)
         storage = Storage(grove_dir)
         resolver = MemberResolver(storage)
         config = MagicMock()

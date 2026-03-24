@@ -1,6 +1,7 @@
 # grove/integrations/github/client.py
 """GitHub API client using PyGithub + httpx."""
 import logging
+import time
 import httpx
 from github import Github, GithubIntegration
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -18,18 +19,21 @@ class GitHubClient:
         self.installation_id = installation_id
         self._github: Github | None = None
         self._token: str | None = None
+        self._token_expires_at: float = 0.0
 
     def _get_github(self) -> Github:
-        if self._github is None:
-            with open(self.private_key_path) as f:
-                private_key = f.read()
-            integration = GithubIntegration(
-                integration_id=int(self.app_id),
-                private_key=private_key,
-            )
-            access = integration.get_access_token(int(self.installation_id))
-            self._token = access.token
-            self._github = Github(self._token)
+        if self._github is not None and time.time() < self._token_expires_at:
+            return self._github
+        with open(self.private_key_path) as f:
+            private_key = f.read()
+        integration = GithubIntegration(
+            integration_id=int(self.app_id),
+            private_key=private_key,
+        )
+        access = integration.get_access_token(int(self.installation_id))
+        self._token = access.token
+        self._token_expires_at = time.time() + 3300  # Refresh 5 min before 1h expiry
+        self._github = Github(self._token)
         return self._github
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))

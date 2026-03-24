@@ -11,16 +11,16 @@ class DailyDataCollector:
         self.github = github
         self.repo = repo
 
-    def collect(self) -> dict:
+    async def collect(self) -> dict:
         since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-        commits = self.github.list_recent_commits(self.repo, since=since)
+        commits = await self.github.list_recent_commits(self.repo, since=since)
         commits_by_member: dict[str, int] = {}
         for c in commits:
             author = c["author"]
             commits_by_member[author] = commits_by_member.get(author, 0) + 1
-        open_prs = self.github.list_open_prs(self.repo)
-        issues = self.github.list_issues(self.repo, state="open")
-        milestones = self.github.list_milestones(self.repo)
+        open_prs = await self.github.list_open_prs(self.repo)
+        issues = await self.github.list_issues(self.repo, state="open")
+        milestones = await self.github.list_milestones(self.repo)
         return {
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "total_commits": len(commits), "commits": commits,
@@ -33,11 +33,11 @@ class DailyDataCollector:
         """Collect daily data with commit type classification."""
         from grove.utils.commit_classifier import classify_commit
 
-        data = self.collect()
+        data = await self.collect()
 
         # Get detailed commits for classification
         since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-        detailed = self.github.list_recent_commits_detailed(self.repo, since=since)
+        detailed = await self.github.list_recent_commits_detailed(self.repo, since=since)
 
         commits_by_type: dict[str, int] = {}
         commit_details: list[dict] = []

@@ -1,5 +1,6 @@
 """Event bus with declarative @subscribe decorator and async dispatch."""
 
+import asyncio
 import json
 import logging
 from collections import defaultdict
@@ -91,9 +92,12 @@ class EventBus:
             logger.exception("Failed to write failed-event log")
 
     async def dispatch(self, event: Event) -> None:
-        """Dispatch an event to all registered handlers. Errors are logged, not raised."""
+        """Dispatch an event to all registered handlers concurrently."""
         handlers = self._handlers.get(event.type, [])
-        for handler in handlers:
+        if not handlers:
+            return
+
+        async def _safe_call(handler):
             try:
                 await handler(event)
             except Exception as exc:
@@ -104,3 +108,5 @@ class EventBus:
                 )
                 logger.exception("Handler %s failed for event %s", handler_name, event.id)
                 self._log_failed_event(event, handler_name, str(exc))
+
+        await asyncio.gather(*(_safe_call(h) for h in handlers))

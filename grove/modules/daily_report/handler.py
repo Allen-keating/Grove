@@ -45,7 +45,7 @@ class DailyReportModule:
             suggestions=suggestions)
         await self.lark.send_card(self.config.lark.chat_id, card)
         report_body = self._build_github_report(data, risks, milestone_summary, suggestions)
-        self.github.create_issue(
+        await self.github.create_issue(
             repo=self.config.project.repo,
             title=f"📋 每日站会报告 — {data['date']}",
             body=report_body, labels=["daily-report"])

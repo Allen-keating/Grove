@@ -65,8 +65,8 @@ class MorningDispatchModule:
         repo = self.config.project.repo
 
         # Collect data
-        issues = self.github.list_issues(repo, state="open")
-        milestones = self.github.list_milestones(repo)
+        issues = await self.github.list_issues(repo, state="open")
+        milestones = await self.github.list_milestones(repo)
 
         if not issues:
             await self.lark.send_text(self.config.lark.chat_id,

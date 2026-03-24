@@ -32,7 +32,7 @@ class ProjectOverviewModule:
         chat_id = event.payload.get("chat_id", self.config.lark.chat_id)
         logger.info("Generating project overview report...")
 
-        data = self._collector.collect()
+        data = await self._collector.collect()
         snapshots = self._collector.load_7day_snapshots()
         trends = self._collector.compute_trends(snapshots)
 
@@ -79,7 +79,7 @@ class ProjectOverviewModule:
 
         # Create GitHub issue
         report_body = self._build_report_markdown(data, trends, prd_completion, analysis)
-        self._collector.github.create_issue(
+        await self._collector.github.create_issue(
             repo=self.config.project.repo,
             title=f"📊 项目进度总览 — {data['date']}",
             body=report_body, labels=["project-overview"],

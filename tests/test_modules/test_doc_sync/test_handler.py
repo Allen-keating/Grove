@@ -20,8 +20,8 @@ class TestDocSyncModule:
         lark.send_text = AsyncMock()
         lark.update_doc = AsyncMock()
         lark.read_doc = AsyncMock(return_value="PRD content")
-        github = MagicMock()
-        github.get_pr_diff = MagicMock(return_value="diff content")
+        github = AsyncMock()
+        github.get_pr_diff.return_value = "diff content"
         storage = Storage(grove_dir)
         # Seed sync-state with a doc_id so doc_sync can resolve it
         storage.write_yaml("docs-sync/sync-state.yml", {
@@ -57,8 +57,8 @@ class TestDocSyncModule:
         lark.send_text = AsyncMock()
         lark.update_doc = AsyncMock()
         lark.read_doc = AsyncMock(return_value="PRD content")
-        github = MagicMock()
-        github.get_pr_diff = MagicMock(return_value="diff content")
+        github = AsyncMock()
+        github.get_pr_diff.return_value = "diff content"
         storage = Storage(grove_dir)
         # No doc_ids in sync-state
         storage.write_yaml("docs-sync/sync-state.yml", {"synced": [], "pending": []})

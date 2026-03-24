@@ -27,7 +27,7 @@ class DocSyncModule:
         repo = event.payload.get("repository", {}).get("full_name", self.config.project.repo)
         logger.info("Checking PR #%s for doc sync: %s", pr_number, pr_title)
         try:
-            diff = self.github.get_pr_diff(repo, pr_number)
+            diff = await self.github.get_pr_diff(repo, pr_number)
         except Exception:
             logger.exception("Failed to get diff for PR #%s", pr_number)
             return
