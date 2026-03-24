@@ -1,6 +1,7 @@
 # tests/test_integrations/test_lark_cards.py
 from grove.integrations.lark.cards import build_notification_card, build_task_assignment_card
 from grove.integrations.lark.cards import build_project_overview_card, build_dispatch_summary_card
+from grove.integrations.lark.cards import build_baseline_merge_card, build_feature_status_card
 
 
 class TestLarkCards:
@@ -65,3 +66,27 @@ class TestDispatchSummaryCard:
     def test_empty_members(self):
         card = build_dispatch_summary_card(date="2026-03-23", member_tasks=[])
         assert card["header"]["title"]["content"] == "🌳 今日团队任务 — 2026-03-23"
+
+
+class TestBaselineMergeCard:
+    def test_builds_valid_card(self):
+        card = build_baseline_merge_card(
+            topic="用户反馈系统", summary="反馈收集与分析", prd_path="prd-用户反馈系统.md",
+        )
+        assert "基线合并" in card["header"]["title"]["content"]
+        actions = [e for e in card["elements"] if e.get("tag") == "action"]
+        assert len(actions) == 1
+        buttons = actions[0]["actions"]
+        assert buttons[0]["value"]["action"] == "confirm_baseline_merge"
+        assert buttons[1]["value"]["action"] == "skip_baseline_merge"
+
+class TestFeatureStatusCard:
+    def test_builds_valid_card(self):
+        card = build_feature_status_card(
+            pr_number=123, feature_name="用户反馈系统",
+            suggested_status="completed", reason="核心 API 已实现",
+        )
+        assert "#123" in card["elements"][0]["text"]["content"]
+        actions = [e for e in card["elements"] if e.get("tag") == "action"]
+        buttons = actions[0]["actions"]
+        assert buttons[0]["value"]["action"] == "confirm_feature_status"

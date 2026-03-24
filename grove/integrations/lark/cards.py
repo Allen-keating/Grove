@@ -163,3 +163,39 @@ def build_dispatch_summary_card(date: str, member_tasks: list[dict]) -> dict:
             {"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}},
         ],
     }
+
+
+def build_baseline_merge_card(topic: str, summary: str, prd_path: str) -> dict:
+    return {
+        "header": {"title": {"tag": "plain_text", "content": "🌳 Grove — 基线合并确认"}, "template": "green"},
+        "elements": [
+            {"tag": "div", "text": {"tag": "lark_md", "content":
+                f"**功能：** {topic}\n**摘要：** {summary}\n**PRD：** {prd_path}"}},
+            {"tag": "action", "actions": [
+                {"tag": "button", "text": {"tag": "plain_text", "content": "✅ 合并到基线"},
+                 "type": "primary", "value": {"action": "confirm_baseline_merge", "topic": topic, "prd_path": prd_path}},
+                {"tag": "button", "text": {"tag": "plain_text", "content": "❌ 暂不合并"},
+                 "value": {"action": "skip_baseline_merge", "topic": topic}},
+            ]},
+        ],
+    }
+
+
+def build_feature_status_card(pr_number: int, feature_name: str, suggested_status: str, reason: str) -> dict:
+    status_text = "已完成" if suggested_status == "completed" else "进行中"
+    return {
+        "header": {"title": {"tag": "plain_text", "content": "🌳 Grove — 功能状态确认"}, "template": "orange"},
+        "elements": [
+            {"tag": "div", "text": {"tag": "lark_md", "content":
+                f"**PR #{pr_number}** 可能{'完成' if suggested_status == 'completed' else '涉及'}了「{feature_name}」\n"
+                f"**建议状态：** {status_text}\n**理由：** {reason}"}},
+            {"tag": "action", "actions": [
+                {"tag": "button", "text": {"tag": "plain_text", "content": "✅ 确认"},
+                 "type": "primary", "value": {"action": "confirm_feature_status", "feature_name": feature_name,
+                                               "status": suggested_status, "pr_number": pr_number}},
+                {"tag": "button", "text": {"tag": "plain_text", "content": "❌ 不相关"},
+                 "type": "danger", "value": {"action": "reject_feature_status", "feature_name": feature_name,
+                                              "pr_number": pr_number}},
+            ]},
+        ],
+    }
