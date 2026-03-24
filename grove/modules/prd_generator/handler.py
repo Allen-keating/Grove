@@ -125,7 +125,11 @@ class PRDGeneratorModule:
 
         await self.bus.dispatch(Event(
             type=EventType.INTERNAL_PRD_FINALIZED, source="internal",
-            payload={"topic": conv.topic, "prd_doc_id": doc_id, "conversation_id": conv.id},
+            payload={
+                "topic": conv.topic, "prd_doc_id": doc_id,
+                "conversation_id": conv.id,
+                "github_path": f"{self.config.doc_sync.github_docs_path}prd-{filename}.md",
+            },
             member=None,
         ))
 
