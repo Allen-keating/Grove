@@ -38,6 +38,7 @@ class EventType(StrEnum):
     CRON_PROJECT_OVERVIEW = "cron.project_overview"
     CRON_MORNING_DISPATCH = "cron.morning_dispatch"
     INTERNAL_DISPATCH_NEGOTIATE = "internal.dispatch_negotiate"
+    INTERNAL_REORGANIZE_BASELINE = "internal.reorganize_baseline"
 
 
 @dataclass

@@ -98,3 +98,9 @@ def test_grove_config_has_dispatch():
         llm={"api_key": "k"},
     )
     assert isinstance(gc.dispatch, DispatchConfig)
+
+
+def test_modules_config_has_prd_baseline():
+    from grove.config import ModulesConfig
+    mc = ModulesConfig()
+    assert mc.prd_baseline is True

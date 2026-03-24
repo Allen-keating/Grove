@@ -77,6 +77,7 @@ class ModulesConfig(BaseModel):
     project_scanner: bool = True
     project_overview: bool = True
     morning_dispatch: bool = True
+    prd_baseline: bool = True
 
 
 class GroveConfig(BaseModel):

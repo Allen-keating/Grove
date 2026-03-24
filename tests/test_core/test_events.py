@@ -79,3 +79,8 @@ def test_new_event_types_exist():
     assert EventType.CRON_PROJECT_OVERVIEW == "cron.project_overview"
     assert EventType.CRON_MORNING_DISPATCH == "cron.morning_dispatch"
     assert EventType.INTERNAL_DISPATCH_NEGOTIATE == "internal.dispatch_negotiate"
+
+
+def test_reorganize_baseline_event():
+    from grove.core.events import EventType
+    assert EventType.INTERNAL_REORGANIZE_BASELINE == "internal.reorganize_baseline"

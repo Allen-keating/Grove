@@ -118,6 +118,7 @@ def merge_module_state(modules_cfg: ModulesConfig, storage: Storage) -> dict[str
         "project_scanner": modules_cfg.project_scanner,
         "project_overview": modules_cfg.project_overview,
         "morning_dispatch": modules_cfg.morning_dispatch,
+        "prd_baseline": modules_cfg.prd_baseline,
     }
 
     # Override with runtime state if it exists
