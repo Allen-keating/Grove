@@ -31,6 +31,7 @@ class Intent(StrEnum):
     SCAN_PROJECT = "scan_project"
     QUERY_PROJECT_OVERVIEW = "query_project_overview"
     DISPATCH_NEGOTIATE = "dispatch_negotiate"
+    REORGANIZE_BASELINE = "reorganize_baseline"
     # Fallback
     UNKNOWN = "unknown"
 
@@ -56,6 +57,7 @@ MODULE_ALIASES: dict[str, str] = {
     "项目扫描": "project_scanner",
     "项目总览": "project_overview",
     "每日任务": "morning_dispatch",
+    "基线管理": "prd_baseline", "prd基线": "prd_baseline",
 }
 
 _TOGGLE_ACTION_MAP: dict[str, str] = {
@@ -78,6 +80,7 @@ _KEYWORD_RULES: list[tuple[list[str], str]] = [
     (["模块状态", "哪些功能", "功能列表", "模块列表"], Intent.QUERY_MODULE_STATUS),
     (["扫描项目", "生成项目文档", "更新项目文档"], Intent.SCAN_PROJECT),
     (["项目总览", "项目进度报告", "项目概况"], Intent.QUERY_PROJECT_OVERVIEW),
+    (["整理基线", "重排基线", "基线整理"], Intent.REORGANIZE_BASELINE),
 ]
 
 # LLM should only return these intents; anything else is clamped to UNKNOWN

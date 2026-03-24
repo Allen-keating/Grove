@@ -88,6 +88,11 @@ class CommunicationModule:
                          "sender_id": event.payload.get("sender_id", "")},
                 member=event.member,
             ))
+        elif parsed.intent == Intent.REORGANIZE_BASELINE:
+            await self.bus.dispatch(Event(
+                type=EventType.INTERNAL_REORGANIZE_BASELINE, source="internal",
+                payload={"chat_id": chat_id}, member=event.member,
+            ))
         else:
             await self.lark.send_text(chat_id,
                 f"收到，{event.member.name}。不过我不太确定你需要什么，能再说具体一点吗？")
@@ -139,7 +144,7 @@ class CommunicationModule:
             "task_breakdown": "任务拆解", "daily_report": "每日巡检",
             "pr_review": "PR 审查", "doc_sync": "文档同步", "member": "成员管理",
             "project_scanner": "项目扫描", "project_overview": "项目总览",
-            "morning_dispatch": "每日任务",
+            "morning_dispatch": "每日任务", "prd_baseline": "PRD 基线",
         }
         display = MODULE_DISPLAY.get(module_name, module_name)
         if action == "enable":
@@ -161,7 +166,7 @@ class CommunicationModule:
             "task_breakdown": "任务拆解", "daily_report": "每日巡检",
             "pr_review": "PR 审查", "doc_sync": "文档同步", "member": "成员管理",
             "project_scanner": "项目扫描", "project_overview": "项目总览",
-            "morning_dispatch": "每日任务",
+            "morning_dispatch": "每日任务", "prd_baseline": "PRD 基线",
         }
         status = self.registry.get_status()
         lines = ["📋 **模块状态**\n"]
