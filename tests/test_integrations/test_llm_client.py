@@ -5,42 +5,42 @@ from grove.integrations.llm.client import LLMClient
 
 class TestLLMClient:
     def test_client_init(self):
-        with patch("grove.integrations.llm.client.anthropic.AsyncAnthropic"):
-            client = LLMClient(api_key="test_key", model="claude-sonnet-4-6")
-            assert client.model == "claude-sonnet-4-6"
+        with patch("grove.integrations.llm.client.AsyncOpenAI"):
+            client = LLMClient(api_key="test_key", model="glm-5")
+            assert client.model == "glm-5"
             assert client._semaphore._value == 3
 
     def test_client_custom_concurrency(self):
-        with patch("grove.integrations.llm.client.anthropic.AsyncAnthropic"):
-            client = LLMClient(api_key="test_key", model="claude-sonnet-4-6", max_concurrency=5)
+        with patch("grove.integrations.llm.client.AsyncOpenAI"):
+            client = LLMClient(api_key="test_key", model="glm-5", max_concurrency=5)
             assert client._semaphore._value == 5
 
-    async def test_chat_calls_anthropic(self):
-        mock_anthropic = MagicMock()
+    async def test_chat_calls_llm(self):
+        mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Hello from Claude")]
-        mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
-        mock_anthropic.messages.create = AsyncMock(return_value=mock_response)
+        mock_response.choices = [MagicMock(message=MagicMock(content="Hello from LLM"))]
+        mock_response.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        with patch("grove.integrations.llm.client.anthropic.AsyncAnthropic",
-                    return_value=mock_anthropic):
-            client = LLMClient(api_key="test_key", model="claude-sonnet-4-6")
+        with patch("grove.integrations.llm.client.AsyncOpenAI",
+                    return_value=mock_client):
+            client = LLMClient(api_key="test_key", model="glm-5")
             result = await client.chat(
                 system_prompt="You are an AI PM.",
                 messages=[{"role": "user", "content": "Hello"}],
             )
-            assert result == "Hello from Claude"
+            assert result == "Hello from LLM"
 
     async def test_chat_timeout(self):
-        mock_anthropic = MagicMock()
+        mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="ok")]
-        mock_response.usage = MagicMock(input_tokens=1, output_tokens=1)
-        mock_anthropic.messages.create = AsyncMock(return_value=mock_response)
+        mock_response.choices = [MagicMock(message=MagicMock(content="ok"))]
+        mock_response.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        with patch("grove.integrations.llm.client.anthropic.AsyncAnthropic",
-                    return_value=mock_anthropic):
+        with patch("grove.integrations.llm.client.AsyncOpenAI",
+                    return_value=mock_client):
             client = LLMClient(api_key="test_key")
             await client.chat(system_prompt="test", messages=[{"role": "user", "content": "hi"}])
-            call_kwargs = mock_anthropic.messages.create.call_args
+            call_kwargs = mock_client.chat.completions.create.call_args
             assert call_kwargs.kwargs.get("timeout") == 60.0

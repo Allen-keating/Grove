@@ -32,7 +32,8 @@ class GitHubConfig(BaseModel):
 
 class LLMConfig(BaseModel):
     api_key: str
-    model: str = "claude-sonnet-4-6"
+    model: str = "glm-5"
+    base_url: str = "https://coding.dashscope.aliyuncs.com/v1"
 
 
 class PersonaConfig(BaseModel):

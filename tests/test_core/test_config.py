@@ -11,7 +11,7 @@ class TestConfig:
         assert config.project.repo == "testorg/testrepo"
         assert config.lark.app_id == "test_app_id"
         assert config.github.app_id == "12345"
-        assert config.llm.model == "claude-sonnet-4-6"
+        assert config.llm.model == "glm-5"
         assert config.persona.name == "Grove"
         assert config.work_hours.timezone == "Asia/Shanghai"
         assert config.schedules.daily_report == "09:00"

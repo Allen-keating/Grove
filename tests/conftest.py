@@ -83,7 +83,8 @@ github:
 
 llm:
   api_key: "test_api_key"
-  model: "claude-sonnet-4-6"
+  model: "glm-5"
+  base_url: "https://coding.dashscope.aliyuncs.com/v1"
 
 persona:
   name: "Grove"

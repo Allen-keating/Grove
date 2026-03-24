@@ -101,6 +101,7 @@ class LarkClient:
             self._client = lark.Client.builder() \
                 .app_id(self.app_id) \
                 .app_secret(self.app_secret) \
+                .domain(lark.LARK_DOMAIN) \
                 .build()
         return self._client
 

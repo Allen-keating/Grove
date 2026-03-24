@@ -12,6 +12,10 @@ from grove.integrations.lark.models import LarkMessage
 
 logger = logging.getLogger(__name__)
 
+# Dedup: track recently processed message IDs to ignore Lark retransmissions
+_seen_message_ids: set[str] = set()
+_MAX_SEEN = 500
+
 
 def _parse_lark_message(data: P2ImMessageReceiveV1) -> LarkMessage | None:
     try:
@@ -20,9 +24,18 @@ def _parse_lark_message(data: P2ImMessageReceiveV1) -> LarkMessage | None:
         content = json.loads(msg.content)
         text = content.get("text", "")
         mentions = msg.mentions or []
-        is_mention = any(m.name == "Grove" or m.key == "@_all" for m in mentions)
+        # Debug: log raw mention data
         for m in mentions:
-            text = text.replace(f"@_user_{m.id.open_id}", "").strip()
+            logger.info(">>> Mention: key=%s, name=%s, id=%s", m.key, m.name, m.id)
+        # Check if bot is mentioned by name or @_all
+        is_mention = any(
+            (m.name and "grove" in m.name.lower()) or m.key == "@_all"
+            for m in mentions
+        )
+        # Remove mention placeholders from text
+        for m in mentions:
+            if m.key:
+                text = text.replace(m.key, "").strip()
         return LarkMessage(
             message_id=msg.message_id,
             chat_id=msg.chat_id,
@@ -46,10 +59,22 @@ def create_lark_ws_client(
     _loop = loop or asyncio.get_running_loop()
 
     def handle_message(data: P2ImMessageReceiveV1):
+        logger.info(">>> Lark WS received raw message callback")
         msg = _parse_lark_message(data)
         if msg is None:
+            logger.warning(">>> Failed to parse message")
             return
+        # Dedup: skip retransmitted messages
+        if msg.message_id in _seen_message_ids:
+            logger.info(">>> Skipped duplicate message_id=%s", msg.message_id)
+            return
+        _seen_message_ids.add(msg.message_id)
+        if len(_seen_message_ids) > _MAX_SEEN:
+            _seen_message_ids.clear()
+        logger.info(">>> Parsed: chat_type=%s, is_mention=%s, text='%s'",
+                     msg.chat_type, msg.is_mention, msg.text[:50])
         if not msg.is_mention and msg.chat_type != "p2p":
+            logger.info(">>> Skipped: not mention and not p2p")
             return
         event = Event(
             type=EventType.LARK_MESSAGE,
@@ -62,6 +87,7 @@ def create_lark_ws_client(
                 "chat_type": msg.chat_type,
             },
         )
+        logger.info(">>> Dispatching event to main loop")
         asyncio.run_coroutine_threadsafe(on_event(event), _loop)
 
     def handle_card_action(data):
@@ -97,5 +123,6 @@ def create_lark_ws_client(
         app_secret=app_secret,
         event_handler=event_handler,
         log_level=lark.LogLevel.INFO,
+        domain=lark.LARK_DOMAIN,
     )
     return ws_client

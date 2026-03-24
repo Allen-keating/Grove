@@ -51,6 +51,8 @@ _member_resolver: MemberResolver | None = None
 
 
 async def handle_event(event: Event) -> None:
+    logger.info(">>> handle_event called: type=%s source=%s sender_id=%s",
+                event.type, event.source, event.payload.get("sender_id", "N/A"))
     health_state.last_event_processed = event.timestamp
     if _member_resolver is not None:
         github_user = None
@@ -67,6 +69,7 @@ async def handle_event(event: Event) -> None:
             event.member = _member_resolver.by_github(github_user)
         elif lark_user:
             event.member = _member_resolver.by_lark_id(lark_user)
+    logger.info(">>> Resolved member: %s", event.member.name if event.member else "None")
     await event_bus.dispatch(event)
 
 
@@ -98,6 +101,7 @@ async def lifespan(app: FastAPI):
     )
     app.state.llm_client = LLMClient(
         api_key=config.llm.api_key, model=config.llm.model,
+        base_url=config.llm.base_url,
     )
 
     # Merge config + runtime state
@@ -201,22 +205,34 @@ async def lifespan(app: FastAPI):
         on_event=handle_event, loop=main_loop,
     )
 
-    async def start_lark_ws():
+    def _run_lark_ws_in_thread():
+        """Run Lark WS client in a dedicated thread with a fresh event loop.
+
+        The Lark SDK captures `loop = asyncio.get_event_loop()` at module import
+        time, which grabs the main uvicorn loop. We must replace the SDK's
+        module-level `loop` variable with a fresh one for this thread.
+        """
+        import lark_oapi.ws.client as ws_mod
+        fresh_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(fresh_loop)
+        ws_mod.loop = fresh_loop  # Override SDK's module-level loop
         try:
             health_state.lark_ws_connected = True
             logger.info("Lark WebSocket starting")
-            await asyncio.to_thread(lark_ws.start)
+            lark_ws.start()
         except Exception:
             health_state.lark_ws_connected = False
             logger.exception("Lark WebSocket disconnected or failed to start")
 
-    lark_task = asyncio.create_task(start_lark_ws())
+    import threading
+    lark_thread = threading.Thread(target=_run_lark_ws_in_thread, daemon=True)
+    lark_thread.start()
     logger.info("Grove is ready — %s", config.persona.name)
     yield
 
     scheduler.shutdown()
     health_state.scheduler_running = False
-    lark_task.cancel()
+    health_state.lark_ws_connected = False
     _member_resolver = None
     logger.info("Grove shutdown complete")
 
