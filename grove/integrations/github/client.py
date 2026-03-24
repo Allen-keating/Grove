@@ -239,3 +239,25 @@ class GitHubClient:
             detail = self.get_commit_detail(repo, c.sha)
             results.append(detail)
         return results
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def read_file_head(self, repo: str, path: str, max_lines: int = 100) -> str:
+        """Read the first N lines of a file. Downloads full file, truncates locally."""
+        content = self.read_file(repo, path)
+        lines = content.split("\n")
+        return "\n".join(lines[:max_lines])
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
+    def get_pr_commits(self, repo: str, pr_number: int) -> list[dict]:
+        """Get all commits associated with a PR."""
+        gh = self._get_github()
+        r = gh.get_repo(repo)
+        pr = r.get_pull(pr_number)
+        return [
+            {
+                "sha": c.sha[:7],
+                "message": c.commit.message.split("\n")[0],
+                "author": c.commit.author.name,
+            }
+            for c in pr.get_commits()
+        ]

@@ -125,3 +125,39 @@ class TestGitHubClientNewMethods:
 
         result = client.list_recent_commits_detailed("org/repo", since="2026-03-22T00:00:00", max_commits=3)
         assert len(result) == 3
+
+
+class TestGitHubClientBaselineMethods:
+    def _make_client(self):
+        return GitHubClient(app_id="1", private_key_path="/tmp/fake.pem", installation_id="2")
+
+    def test_read_file_head_truncates(self):
+        client = self._make_client()
+        mock_repo = MagicMock()
+        mock_content = MagicMock()
+        mock_content.decoded_content = b"line1\nline2\nline3\nline4\nline5"
+        mock_repo.get_contents.return_value = mock_content
+        mock_gh = MagicMock()
+        mock_gh.get_repo.return_value = mock_repo
+        client._github = mock_gh
+        result = client.read_file_head("org/repo", "main.py", max_lines=3)
+        assert result == "line1\nline2\nline3"
+
+    def test_get_pr_commits(self):
+        client = self._make_client()
+        mock_commit = MagicMock()
+        mock_commit.sha = "abc1234567"
+        mock_commit.commit.message = "feat: add login\n\nDetailed description"
+        mock_commit.commit.author.name = "alice"
+        mock_pr = MagicMock()
+        mock_pr.get_commits.return_value = [mock_commit]
+        mock_repo = MagicMock()
+        mock_repo.get_pull.return_value = mock_pr
+        mock_gh = MagicMock()
+        mock_gh.get_repo.return_value = mock_repo
+        client._github = mock_gh
+        result = client.get_pr_commits("org/repo", 42)
+        assert len(result) == 1
+        assert result[0]["sha"] == "abc1234"
+        assert result[0]["message"] == "feat: add login"
+        assert result[0]["author"] == "alice"
