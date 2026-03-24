@@ -33,6 +33,7 @@ from grove.modules.doc_sync.handler import DocSyncModule
 from grove.modules.project_scanner.handler import ProjectScannerModule
 from grove.modules.project_overview.handler import ProjectOverviewModule
 from grove.modules.morning_dispatch.handler import MorningDispatchModule
+from grove.modules.prd_baseline.handler import PRDBaselineModule
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -150,6 +151,10 @@ async def lifespan(app: FastAPI):
         github=app.state.github_client, config=config, storage=storage,
         resolver=resolver, member_module=member_module,
     )
+    prd_baseline = PRDBaselineModule(
+        bus=event_bus, llm=app.state.llm_client, lark=app.state.lark_client,
+        github=app.state.github_client, config=config, storage=storage,
+    )
 
     # Register via registry (respects merged state)
     registry.add("communication", communication, enabled=effective_modules["communication"])
@@ -162,6 +167,7 @@ async def lifespan(app: FastAPI):
     registry.add("project_scanner", project_scanner, enabled=effective_modules["project_scanner"])
     registry.add("project_overview", project_overview, enabled=effective_modules["project_overview"])
     registry.add("morning_dispatch", morning_dispatch, enabled=effective_modules["morning_dispatch"])
+    registry.add("prd_baseline", prd_baseline, enabled=effective_modules["prd_baseline"])
 
     # Admin API (only if token configured)
     if config.admin_token:

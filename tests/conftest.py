@@ -121,6 +121,7 @@ modules:
   project_scanner: true
   project_overview: true
   morning_dispatch: true
+  prd_baseline: true
 """,
         encoding="utf-8",
     )
