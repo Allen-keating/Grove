@@ -101,6 +101,7 @@ class PRDGeneratorModule:
                 title=f"{conv.topic} — PRD",
                 markdown_content=prd_content,
             )
+            await self.lark.update_doc(doc_id, prd_content)
             conv.prd_doc_id = doc_id
             self._save_doc_id(f"prd-{filename}.md", doc_id)
         except Exception:

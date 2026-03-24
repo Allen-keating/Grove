@@ -90,6 +90,29 @@ def _markdown_to_sdk_blocks(markdown: str) -> list:
     return blocks
 
 
+def _markdown_to_json_blocks(markdown: str) -> list[dict]:
+    """Convert markdown to Lark block dicts for the HTTP API."""
+    def _text_block(content: str) -> dict:
+        return {"block_type": 2, "text": {"elements": [{"text_run": {"content": content}}]}}
+
+    blocks = []
+    for line in markdown.strip().split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("### "):
+            blocks.append({"block_type": 5, "heading3": {"elements": [{"text_run": {"content": stripped[4:]}}]}})
+        elif stripped.startswith("## "):
+            blocks.append({"block_type": 4, "heading2": {"elements": [{"text_run": {"content": stripped[3:]}}]}})
+        elif stripped.startswith("# "):
+            blocks.append({"block_type": 3, "heading1": {"elements": [{"text_run": {"content": stripped[2:]}}]}})
+        elif stripped.startswith("- ") or stripped.startswith("* "):
+            blocks.append(_text_block(f"• {stripped[2:]}"))
+        else:
+            blocks.append(_text_block(stripped))
+    return blocks
+
+
 class LarkClient:
     def __init__(self, app_id: str, app_secret: str):
         self.app_id = app_id
@@ -147,23 +170,36 @@ class LarkClient:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
     async def create_doc(self, space_id: str, title: str, markdown_content: str) -> str:
-        """Create a new doc in a Lark wiki space. Returns the document ID."""
-        from lark_oapi.api.docx.v1 import CreateDocumentRequest, CreateDocumentRequestBody
+        """Create a new doc in a Lark wiki space. Returns the obj_token.
+
+        space_id can be either numeric or the wiki token from the URL.
+        """
+        from lark_oapi.api.wiki.v2 import CreateSpaceNodeRequest, GetNodeSpaceRequest, Node
+
         def _create():
             client = self._get_client()
-            request = CreateDocumentRequest.builder() \
-                .request_body(
-                    CreateDocumentRequestBody.builder()
-                    .title(title)
-                    .folder_token(space_id)
-                    .build()
-                ).build()
-            response = client.docx.v1.document.create(request)
+            # Resolve numeric space_id from wiki token if needed
+            numeric_id = space_id
+            if not space_id.isdigit():
+                req = GetNodeSpaceRequest.builder().token(space_id).build()
+                resp = client.wiki.v2.space.get_node(req)
+                if resp.success():
+                    numeric_id = str(resp.data.node.space_id)
+                else:
+                    raise RuntimeError(f"Lark resolve space_id error: {resp.code} {resp.msg}")
+
+            node = Node.builder().obj_type("docx").node_type("origin").title(title).build()
+            request = CreateSpaceNodeRequest.builder() \
+                .space_id(numeric_id) \
+                .request_body(node) \
+                .build()
+            response = client.wiki.v2.space_node.create(request)
             if not response.success():
-                raise RuntimeError(f"Lark create doc error: {response.code} {response.msg}")
-            return response.data.document.document_id
+                raise RuntimeError(f"Lark create wiki doc error: {response.code} {response.msg}")
+            return response.data.node.obj_token
+
         doc_id = await asyncio.to_thread(_create)
-        logger.info("Created Lark doc '%s' (id=%s)", title, doc_id)
+        logger.info("Created Lark wiki doc '%s' (id=%s)", title, doc_id)
         return doc_id
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
@@ -189,65 +225,54 @@ class LarkClient:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
     async def update_doc(self, doc_id: str, markdown_content: str) -> None:
-        """Update a Lark document by replacing all content blocks."""
-        from lark_oapi.api.docx.v1 import (
-            ListDocumentBlockRequest,
-            BatchDeleteDocumentBlockChildrenRequest,
-            BatchDeleteDocumentBlockChildrenRequestBody,
-            CreateDocumentBlockChildrenRequest,
-            CreateDocumentBlockChildrenRequestBody,
-        )
+        """Update a Lark document by replacing all content blocks via HTTP API."""
+        import httpx as _httpx
+
+        def _get_token():
+            resp = _httpx.post(
+                f"{lark.LARK_DOMAIN}/open-apis/auth/v3/tenant_access_token/internal",
+                json={"app_id": self.app_id, "app_secret": self.app_secret},
+            )
+            return resp.json()["tenant_access_token"]
 
         def _update():
-            client = self._get_client()
+            token = _get_token()
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            base = lark.LARK_DOMAIN
 
-            # Step 1: List existing blocks to find the page block and child count
-            list_req = ListDocumentBlockRequest.builder() \
-                .document_id(doc_id) \
-                .build()
-            list_resp = client.docx.v1.document_block.list(list_req)
-            if not list_resp.success():
-                raise RuntimeError(f"Lark list blocks error: {list_resp.code} {list_resp.msg}")
-
-            blocks = list_resp.data.items or []
+            # Step 1: List blocks to find page block and child count
+            resp = _httpx.get(f"{base}/open-apis/docx/v1/documents/{doc_id}/blocks", headers=headers)
+            data = resp.json()
+            if data["code"] != 0:
+                raise RuntimeError(f"Lark list blocks error: {data['code']} {data['msg']}")
+            blocks = data["data"]["items"]
             if not blocks:
-                logger.warning("No blocks found in doc %s, cannot update", doc_id)
+                logger.warning("No blocks in doc %s", doc_id)
                 return
+            page_id = blocks[0]["block_id"]
+            children = blocks[0].get("children", [])
 
-            page_block = blocks[0]
-            page_block_id = page_block.block_id
-            num_children = len(page_block.children) if page_block.children else 0
+            # Step 2: Delete existing children
+            if children:
+                resp = _httpx.request(
+                    "DELETE",
+                    f"{base}/open-apis/docx/v1/documents/{doc_id}/blocks/{page_id}/children/batch_delete",
+                    headers=headers,
+                    json={"start_index": 0, "end_index": len(children)},
+                )
+                if resp.json()["code"] != 0:
+                    raise RuntimeError(f"Lark delete blocks error: {resp.json()}")
 
-            # Step 2: Delete all children of the page block
-            if num_children > 0:
-                del_req = BatchDeleteDocumentBlockChildrenRequest.builder() \
-                    .document_id(doc_id) \
-                    .block_id(page_block_id) \
-                    .request_body(
-                        BatchDeleteDocumentBlockChildrenRequestBody.builder()
-                        .start_index(0)
-                        .end_index(num_children)
-                        .build()
-                    ).build()
-                del_resp = client.docx.v1.document_block_children.batch_delete(del_req)
-                if not del_resp.success():
-                    raise RuntimeError(f"Lark delete blocks error: {del_resp.code} {del_resp.msg}")
-
-            # Step 3: Create new content blocks from markdown
-            new_blocks = _markdown_to_sdk_blocks(markdown_content)
+            # Step 3: Create new blocks from markdown
+            new_blocks = _markdown_to_json_blocks(markdown_content)
             if new_blocks:
-                create_req = CreateDocumentBlockChildrenRequest.builder() \
-                    .document_id(doc_id) \
-                    .block_id(page_block_id) \
-                    .request_body(
-                        CreateDocumentBlockChildrenRequestBody.builder()
-                        .children(new_blocks)
-                        .index(0)
-                        .build()
-                    ).build()
-                create_resp = client.docx.v1.document_block_children.create(create_req)
-                if not create_resp.success():
-                    raise RuntimeError(f"Lark create blocks error: {create_resp.code} {create_resp.msg}")
+                resp = _httpx.post(
+                    f"{base}/open-apis/docx/v1/documents/{doc_id}/blocks/{page_id}/children",
+                    headers=headers,
+                    json={"children": new_blocks, "index": 0},
+                )
+                if resp.json()["code"] != 0:
+                    raise RuntimeError(f"Lark create blocks error: {resp.json()}")
 
         await asyncio.to_thread(_update)
         logger.info("Updated Lark doc %s", doc_id)

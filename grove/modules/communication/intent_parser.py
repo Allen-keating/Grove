@@ -78,8 +78,8 @@ _NEGATION_RE = re.compile(r"不要|不想|别|不用|不需要|没必要|取消"
 
 _KEYWORD_RULES: list[tuple[list[str], str]] = [
     (["模块状态", "哪些功能", "功能列表", "模块列表"], Intent.QUERY_MODULE_STATUS),
-    (["扫描项目", "生成项目文档", "更新项目文档"], Intent.SCAN_PROJECT),
-    (["项目总览", "项目进度报告", "项目概况"], Intent.QUERY_PROJECT_OVERVIEW),
+    (["扫描项目", "项目扫描", "生成项目文档", "更新项目文档"], Intent.SCAN_PROJECT),
+    (["项目总览", "项目进度报告", "项目概况", "进度总览"], Intent.QUERY_PROJECT_OVERVIEW),
     (["整理基线", "重排基线", "基线整理"], Intent.REORGANIZE_BASELINE),
 ]
 

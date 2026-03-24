@@ -66,10 +66,12 @@ class ProjectScannerModule:
         is_cold_start = not self._is_baseline_confirmed()
 
         # Data collection
+        await self.lark.send_text(chat_id, f"📂 正在获取 {repo} 仓库结构...")
         tree = await self.github.get_repo_tree(repo)
         readme = await self._safe_read_file(repo, "README.md")
         deps = await self._collect_dependencies(repo)
         source_snippets = await self._read_key_sources(repo, tree)
+        await self.lark.send_text(chat_id, f"📊 已获取 {len(tree)} 个文件，正在分析最近提交...")
         since = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
         commits = await self.github.list_recent_commits_detailed(repo, since=since, max_commits=500)
         milestones = await self.github.list_milestones(repo)
@@ -81,6 +83,7 @@ class ProjectScannerModule:
             return
 
         # LLM analysis
+        await self.lark.send_text(chat_id, f"🔍 已收集 {len(commits)} 次提交，正在用 AI 分析架构和功能...")
         tree_text = self._format_tree(tree)
         architecture = await self._analyzer.analyze_architecture(
             tree_text, source_snippets, deps, readme)
@@ -109,6 +112,7 @@ class ProjectScannerModule:
 
         activity = f"最近 90 天共 {len(commits)} 次提交，涉及 {len(clusters)} 个功能模块。"
 
+        await self.lark.send_text(chat_id, f"📝 识别出 {len(features)} 个功能模块，正在生成基线文档...")
         baseline_content = await self._analyzer.generate_baseline(
             self.config.project.name, architecture, features, milestones_text, activity,
         )
@@ -173,6 +177,8 @@ class ProjectScannerModule:
                     f"[{self.config.project.name}] 项目基线文档",
                     content,
                 )
+                # Write content into the newly created doc
+                await self.lark.update_doc(doc_id, content)
                 self._storage.write_yaml("memory/project-scan/baseline-doc-id.yml", {"doc_id": doc_id})
         except Exception:
             logger.exception("Lark baseline doc failed")

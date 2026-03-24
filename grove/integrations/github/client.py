@@ -168,12 +168,16 @@ class GitHubClient:
         gh = self._get_github()
         r = gh.get_repo(repo)
         prs = r.get_pulls(state="open")
-        return [
-            {"number": pr.number, "title": pr.title, "author": pr.user.login,
-             "created_at": pr.created_at.isoformat(), "updated_at": pr.updated_at.isoformat(),
-             "review_requested": bool(list(pr.get_review_requests()[0]))}
-            for pr in prs[:20]
-        ]
+        results = []
+        for pr in prs:
+            if len(results) >= 20:
+                break
+            results.append({
+                "number": pr.number, "title": pr.title, "author": pr.user.login,
+                "created_at": pr.created_at.isoformat(), "updated_at": pr.updated_at.isoformat(),
+                "review_requested": bool(list(pr.get_review_requests()[0])),
+            })
+        return results
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=4))
     def list_milestones(self, repo: str) -> list:
