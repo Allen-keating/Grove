@@ -126,7 +126,7 @@ class ProjectScannerModule:
         self._storage.write_json("memory/project-scan/feature-tracking.json", tracking)
 
         # Output: single baseline document
-        doc_id = await self._output_baseline(baseline_content)
+        await self._output_baseline(baseline_content)
 
         # Save metadata
         self._storage.write_json("memory/project-scan/latest-scan.json", {

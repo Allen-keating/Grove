@@ -51,7 +51,6 @@ class TestProjectScanner:
     @pytest.mark.asyncio
     async def test_scan_calls_analyzer(self, scanner_module):
         """Full scan flow calls analyzer methods in order."""
-        from grove.integrations.github.models import IssueData
         scanner_module.github.get_repo_tree.return_value = [
             {"path": "main.py", "type": "blob", "size": 100}
         ]

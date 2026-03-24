@@ -11,7 +11,7 @@ from grove.integrations.lark.cards import build_baseline_merge_card, build_featu
 from grove.integrations.lark.client import LarkClient
 from grove.integrations.llm.client import LLMClient
 from grove.modules.prd_baseline.baseline_editor import (
-    append_feature, format_feature_entry, move_feature, parse_features,
+    append_feature, format_feature_entry, parse_features,
 )
 from grove.modules.prd_baseline.matcher import FeatureMatcher
 from grove.modules.prd_baseline.prompts import REORGANIZE_BASELINE_PROMPT
