@@ -28,8 +28,8 @@ class TestProjectScanner:
     async def test_empty_repo_sends_message(self, scanner_module):
         scanner_module.github.get_repo_tree.return_value = []
         scanner_module.github.list_recent_commits_detailed.return_value = []
-        scanner_module.github.list_issues.return_value = []
         scanner_module.github.list_milestones.return_value = []
+        scanner_module.github.list_open_prs.return_value = []
         event = MagicMock()
         event.payload = {"chat_id": "oc_test"}
         await scanner_module.on_scan_project(event)
@@ -59,25 +59,24 @@ class TestProjectScanner:
             {"sha": "abc1234", "message": "feat: init", "author": "alice",
              "date": "2026-03-01", "files": [{"filename": "main.py"}]}
         ]
-        scanner_module.github.list_issues.return_value = [
-            IssueData(number=1, title="Test Issue", body="", state="open", labels=[], assignees=[])
-        ]
         scanner_module.github.list_milestones.return_value = []
+        scanner_module.github.list_open_prs.return_value = []
         scanner_module.github.read_file.side_effect = Exception("not found")
+        scanner_module.github.read_file_head.side_effect = Exception("not found")
 
         scanner_module._analyzer.analyze_architecture = AsyncMock(return_value="Architecture info")
-        scanner_module._analyzer.analyze_features = AsyncMock(return_value=[
-            {"name": "Feature 1", "status": "completed", "description": "Test feature"}
+        scanner_module._analyzer.cluster_features = AsyncMock(return_value=[
+            {"feature": "Feature 1", "commits": ["abc1234"], "description": "Test feature"}
         ])
-        scanner_module._analyzer.generate_reverse_prd = AsyncMock(return_value="# PRD Content")
+        scanner_module._analyzer.generate_baseline = AsyncMock(return_value="# Baseline Content\n\n## 功能清单\n\n### ✅ 已实现\n\n### 🔄 进行中\n\n### ⬚ 待开发\n")
         scanner_module.lark.create_doc = AsyncMock(return_value="doc_123")
+        # Mark as confirmed so it doesn't send cold-start card
+        scanner_module._storage.read_yaml.side_effect = lambda p: {"confirmed": True} if "confirmed" in p else (_ for _ in ()).throw(FileNotFoundError)
 
         event = MagicMock()
         event.payload = {"chat_id": "oc_test"}
         await scanner_module.on_scan_project(event)
 
         scanner_module._analyzer.analyze_architecture.assert_called_once()
-        scanner_module._analyzer.analyze_features.assert_called_once()
-        scanner_module._analyzer.generate_reverse_prd.assert_called_once()
-        # Should have written files to GitHub
-        assert scanner_module.github.write_file.call_count == 2
+        scanner_module._analyzer.cluster_features.assert_called_once()
+        scanner_module._analyzer.generate_baseline.assert_called_once()

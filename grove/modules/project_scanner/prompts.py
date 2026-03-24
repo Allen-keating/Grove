@@ -1,10 +1,13 @@
-"""Prompt templates for project scanning and reverse PRD generation."""
+"""Prompt templates for project scanning and baseline generation."""
 
 ARCHITECTURE_ANALYSIS_PROMPT = """\
 你是一位资深架构师。根据以下仓库信息，分析项目的技术架构。
 
 目录结构：
 {repo_tree}
+
+关键源码（入口文件、模块入口的前 100 行）：
+{source_snippets}
 
 依赖文件：
 {dependencies}
@@ -20,48 +23,66 @@ README：
 用中文，简洁专业，不超过 500 字。
 """
 
-FEATURE_ANALYSIS_PROMPT = """\
-你是一位产品经理。根据以下信息，逆向推导项目已实现的功能。
+COMMIT_CLUSTER_PROMPT = """\
+你是一位产品经理。将以下 commit messages 按功能分组归纳。
 
-技术架构分析：
-{architecture}
+Commit messages：
+{commits}
 
-目录结构：
-{repo_tree}
+请将这些 commit 按功能单元分组，输出 JSON 数组：
+[{{"feature": "功能名称", "commits": ["sha1", "sha2"], "description": "一句话功能描述"}}]
 
-近期 Commit 摘要（按类型聚合）：
-{commit_summary}
-
-GitHub Issues 标题列表：
-{issues}
-
-请输出 JSON 数组，每个元素为：
-{{"name": "功能名", "status": "completed|in_progress|planned", "description": "一句话描述"}}
-
-只输出 JSON，不要其他内容。
+规则：
+- 同一个功能的 commit 归为一组
+- 纯重构(refactor)、纯测试(test)、纯 CI(ci) 的 commit 归入 "工程维护" 组
+- 功能名称要简洁有意义
+- 只输出 JSON，不要其他内容
 """
 
-REVERSE_PRD_PROMPT = """\
-你是一位产品经理。根据以下信息，生成一份项目 PRD 文档。
+BASELINE_GENERATE_PROMPT = """\
+你是一位产品经理。根据以下信息，生成项目基线文档。
 
-项目架构：
+项目名称：{project_name}
+技术架构：
 {architecture}
 
-已实现功能：
+已识别功能（带状态）：
 {features}
 
 GitHub Milestones：
 {milestones}
 
-请生成标准 PRD 格式的 Markdown 文档，包含：
-1. 概述（项目背景、目标用户）
-2. 已实现功能（按模块分类）
-3. 待开发功能（从 Issues 和 Milestones 推断，标注"由 Grove 逆向推导，待团队确认"）
-4. 技术架构
-5. 里程碑与排期
+近期开发活动摘要：
+{activity_summary}
 
-重要：这是逆向生成的草稿，在文档顶部标注：
-> ⚠️ 本文档由 Grove 自动逆向生成，请团队审阅并补充「未来规划」部分。
+请生成 Markdown 文档，严格遵循以下结构：
+
+# {project_name} 项目基线文档
+
+> ⚠️ 本文档由 Grove 自动维护。功能清单部分请通过 Grove 指令修改。
+
+## 概述
+（从架构和功能推断项目背景和目标用户）
+
+## 技术架构
+（直接使用上面的架构分析）
+
+## 功能清单
+
+### ✅ 已实现
+（每行格式：- ✅ **功能名** — 描述）
+
+### 🔄 进行中
+（每行格式：- 🔄 **功能名** — 描述）
+
+### ⬚ 待开发
+（冷启动时此节为空）
+
+## 里程碑与排期
+（从 Milestones 生成）
+
+## 近期开发活动
+（commit 统计摘要）
 
 用中文。
 """
